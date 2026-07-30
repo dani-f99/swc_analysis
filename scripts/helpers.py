@@ -1,0 +1,54 @@
+import os
+
+
+######################
+######################
+def mkdir(dirs: list,
+          print_msg: bool = False):
+    """
+    Custom functions that create folders based on list of provided folder names.
+    dirs : list -> list of folder names (str) to be created.
+    print_msg: bool -> if True will print progression messeges.
+    """
+    for dir in dirs:
+        if os.path.exists(dir):
+            msg = f"{dir} path already exists."
+        else:
+            os.mkdir(dir)
+            msg = f"{dir} folder was created."
+
+        if print_msg:
+            print(msg)
+
+
+#########################################
+#########################################
+def get_files(dir:str = "input") -> list:
+    """
+    Custom function that get all of the file names in a folder, cheecks that
+    every neuron has both swc and ftr files and finnaly returns list of vaiable
+    neurons (with both swc and ftr files). 
+    dir : str -> folder path.
+    """
+
+    # Getting the unique neuron id's in the folder
+    files_list = [i.split(".")[0] for i in os.listdir(dir)]
+    files_set = set(files_list)
+
+    # Validating that every neuron has both swc and ftr files
+    files_good = []
+    files_bad = []
+    for f in files_set:
+        f_count = files_list.count(f)
+        if f_count == 2:
+            files_good.append(f)
+        elif f_count == 1:
+            files_bad.append(f)
+
+    # If neuron missing file, print messege
+    if len(files_bad) >= 1:
+        print(f"Found neuron_id with missing files: {files_bad}.")
+
+    return files_good
+
+
