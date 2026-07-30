@@ -1,3 +1,11 @@
+# My folders
+data
+data/swc_input
+data/input_labels
+data/output_json
+data/output_clumpiness
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
