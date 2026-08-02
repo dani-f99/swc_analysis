@@ -1,52 +1,90 @@
 #################################
 from scripts.helpers import mkdir, get_files
+from tqdm import tqdm
 import pandas as pd
 import os
 
 
-###############################
-###############################
-def get_neurons_info(path : str, 
-                    file_name : str = "connectors.pkl") -> pd.DataFrame:
+############################################################################
+############################################################################
+def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
+                     swc_labels_filter : str = (True, ("super_class",["central", "optic", "visual_centrifugal", "visual_projection"])),
+                     swc_labels_file : str = "neuron_data_full_article_princeton.ftr",
+                     nodes_labels_folder : str = "processed_swc_data_princeton",
+                     nodes_labels_name : str = "connectors.pkl",
+                     overwrite_parquet : bool = True
+                    ) -> pd.DataFrame:
     """
-    Custom function that itirate over all of the sub-folders and concatenating the required labels file.
-    path : str -> The path of the sub-folders which contains the relevent labels information.
-    file_name : str -> The name of the file which contains the labels information.
+    main_path : str -> path to the folder which contains all the labels required files.
+    swc_labels_filter : str -> if [0] is True filter out unwanted swc file on the base of their super_class label [1][0] and their super type labels rquired [1][1] of the touple.
+    swc_labels_file : str -> name of the neurons swc labels file.
+    nodes_labels_folder : str -> name of the folders containing the nodes labels data.
+    nodes_labels_name : str -> name of the file which contains the nodes labels (pre / post synaptic).
+    overwrite_parquet : bool ->
     """
+
+    parquet_path = os.path.join(main_path, "swc_labels.parquet")
+    if (overwrite_parquet is False) & os.path.exists(parquet_path):
+        raise Exception("> Function execution halted, old `swc_labels.parquet` file preserved.")
+
+    else:
+        os.remove(parquet_path)
+        print("> Old `swc_labels.parquet` deleted, creating a new file.")
+        
+    # 1. Generating a required neurons dataframe with their super-class type.
+    if swc_labels_filter:
+        try:
+            filter_on = swc_labels_filter[1][0]
+            filter_by = swc_labels_filter[1][1]
+
+            swc_labels = pd.read_feather(os.path.join(main_path, swc_labels_file))
+            swc_labels = swc_labels.loc[swc_labels[filter_on].isin(filter_by), ["neuron", filter_on]].drop_duplicates()
+            swc_labels.neuron = swc_labels.neuron.astype("str")
+
+        except:
+            raise Exception("> Error occured while tying to generate relevent neurons labels, please cheeck `swc_labels_filter` argument input.")
+
+
+    # 2. Loading the nodes labels files, cheecking for required neurons and saving the data to parquet (concat) with each itiration for storage efficincy.
     # Mapping the folders
-    folders = os.listdir(path)
+    
+    nodes_labels_path = os.path.join(main_path, nodes_labels_folder)
+    folders = os.listdir(nodes_labels_path)
     paths = []
 
+
     # Getting list of folders with the connector file
-    for i in folders:
-        i_path = os.path.join(path, i, file_name)
+    for i in tqdm(folders, desc="Procssing metadata files", unit="files"):
+        i_path = os.path.join(nodes_labels_path, i, nodes_labels_name)
         if os.path.exists(i_path):
-            paths.append(i_path)
+            temp_labels = pd.read_pickle(i_path)
+            temp_labels.neuron = temp_labels.neuron.astype("str")
 
-    # Creating Unified dataframe for all of the connector files
-    df_mega = pd.concat([pd.read_pickle(i) for i in paths])
+            try:
+                temp_labels = pd.merge(left=temp_labels, 
+                                       right=swc_labels, 
+                                       left_on="neuron",
+                                       right_on="neuron",
+                                       how="inner")
 
-    return df_mega
+            except:
+                pass
+
+        
+        
+        if os.path.exists(parquet_path) is False:
+            temp_labels.to_parquet(parquet_path, 
+                                   engine="fastparquet", 
+                                   compression="zstd")
+        else:
+            temp_labels.to_parquet(parquet_path, 
+                                   engine="fastparquet", 
+                                   compression="zstd",
+                                   append=True)
 
 
-#############################################
-#############################################
-def unify_labels(path : str,
-                 output_folder : str = "_processed_data"):
-    """
-    Custom function that access the neurons nodes labels and create a single parquet file for easy access.
-    path : str -> location of the metadata folder.
-    """
-    # Creating output folder
-    mkdir(output_folder)
+labels_swc = get_neurons_info()
 
-    try:
-        labels_df = get_neurons_info(path)
-        labels_df.to_parquet(os.path.join(output_folder, "neurons_nodes.labels.parquet"), 
-                             engine="pyarrow", 
-                             compression="zstd")
-    except:
-        print("> Failed to load labels file, cheeck `path` argument file path.")
 
 
 ####################################################################
