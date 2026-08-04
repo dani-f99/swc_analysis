@@ -2,6 +2,7 @@
 from scripts.helpers import mkdir, get_files
 from tqdm import tqdm
 import pandas as pd
+import json
 import os
 
 
@@ -20,7 +21,7 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
     swc_labels_file : str -> name of the neurons swc labels file.
     nodes_labels_folder : str -> name of the folders containing the nodes labels data.
     nodes_labels_name : str -> name of the file which contains the nodes labels (pre / post synaptic).
-    overwrite_parquet : bool ->
+    overwrite_parquet : bool -> If true will overwrite the labels+metadata parquet file (defualt is True).
     """
 
     parquet_path = os.path.join(main_path, "swc_labels.parquet")
@@ -50,7 +51,6 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
     
     nodes_labels_path = os.path.join(main_path, nodes_labels_folder)
     folders = os.listdir(nodes_labels_path)
-    paths = []
 
 
     # Getting list of folders with the connector file
@@ -71,7 +71,7 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
                 pass
 
         
-        
+        # 
         if os.path.exists(parquet_path) is False:
             temp_labels.to_parquet(parquet_path, 
                                    engine="fastparquet", 
@@ -81,10 +81,6 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
                                    engine="fastparquet", 
                                    compression="zstd",
                                    append=True)
-
-
-labels_swc = get_neurons_info()
-
 
 
 ####################################################################
