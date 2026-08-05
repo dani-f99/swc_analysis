@@ -6,6 +6,7 @@ import json
 import os
 
 
+
 ############################################################################
 ############################################################################
 def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
@@ -26,7 +27,8 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
 
     parquet_path = os.path.join(main_path, "swc_labels.parquet")
     if (overwrite_parquet is False) & os.path.exists(parquet_path):
-        raise Exception("> Function execution halted, old `swc_labels.parquet` file preserved.")
+        print("> Function execution halted, old `swc_labels.parquet` file preserved.")
+        return
 
     else:
         os.remove(parquet_path)
@@ -81,6 +83,7 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
                                    engine="fastparquet", 
                                    compression="zstd",
                                    append=True)
+
 
 
 ####################################################################
@@ -150,132 +153,104 @@ def simplify_swc_topology(swc_input : pd.DataFrame,
     return df_out
 
 
-###########################
-###########################
-def wsc2json(auto_phrase : bool = True,
-             neuron_id: str = None, 
-             ftr_file : pd.DataFrame = None,
-             input_folder: str = "input", 
-             output_folder: str = "output",
+
+####################################################################
+####################################################################
+def swc2json(swc_dataset : str,
+             neuron_id: str ,
+             save_json : bool = False,
+             save_path: str = None,
              print_msg : bool = False) -> None:
     """
     Converts SWC and FTR files into a JSON structure suitable for find-clumpiness.
-    auto_phrase : bool -> automaticly phrase over the input folder and look for the files.
-    swc_file : str -> File name of the swc neuron tree file.
-    ftr_file : str -> pd.DataFrame of the labels.
-    input_folder : str -> Input file path (contains the swc and ftr files).
-    output_folder : str -> Output file path, will save the find-clumpiness suitible json file.
-    print_msg : bool -> if True will print progression messeges.
+    swc_dataset : str -> SWC information with labels attached (synpase annotations).
+    neuron_id: str -> Neuron name (id).
+    save_json : bool -> If True will save the JSON file into the path stated in the `output_folder`.
+    output_folder: str -> Folder to which save the processed json file.
+    print_msg : bool = False -> if True will print messege about the processed neuron.
     """
     
-    # Will automaticcly get all of the files
-    if auto_phrase:
-        files = get_files(input_folder)
-    
-    # Manual file input
-    else:
-        files = [neuron_id]
+    # Load csv or import pd.DataFrame object
+    if isinstance(swc_dataset, pd.DataFrame):
+        swc_df = swc_dataset
 
-    for file in files:
-        if print_msg:
-            print(f">>> Processing neuron {file}.")
+    elif isinstance(swc_dataset, str):
+        try:
+            swc_df = pd.read_csv(swc_dataset, index_col=0)
+        except:
+            raise Exception("> Invalid string input for `swc_dataset` argument")
+        
 
-        # Loading SWC file & defining type int rows (node_id and parent)
-        swc_path = os.path.join(input_folder, f"{file}.swc")
-        swc_df = pd.read_csv(swc_path, 
-                            comment='#', 
-                            header=None, 
-                            sep=r'\s+', 
-                            names=["node_id", "swc_type", "x", "y", "z", "r", "parent"])
-        swc_df["node_id"] = swc_df["node_id"].astype(int)
-        swc_df["parent"] = swc_df["parent"].astype(int)
+    swc_df["node_id"] = swc_df["node_id"].astype(int)
+    swc_df["parent"] = swc_df["parent"].astype(int)
 
-        # Loading ftr (feather) file and 
-        # Dropping duplicated rows -> due to interactions with multiple neurons
-        if isinstance(ftr_file, pd.DataFrame):
-            ftr_df = ftr_file
+
+    # Preparing for the json tree construction
+    children_map = {}
+    node_labels = {}
+    root = None
+        
+    for _, row in swc_df.iterrows():
+        node = str(int(row['node_id']))
+        parent_val = row['parent']
+            
+         # Labels are already aggregated into a list from the groupby
+        # If label found -> add to the labels dicts with the node_id as key
+        labels = row['type']
+        if isinstance(labels, list):
+            node_labels[node] = labels
         else:
-            ftr_path = os.path.join(input_folder, f"{file}.ftr")
-            ftr_df = pd.read_feather(ftr_path)
-        ftr_df = ftr_df.drop_duplicates(subset=["node_id", "type"])
-        
-        # Grouping by node_id and aggregate all labels into a single list
-        ftr_grouped = ftr_df.groupby("node_id").agg({"type": lambda x: x.dropna().unique().tolist()}).reset_index()
-
-        # Merging swc and ftr dataframes.
-        merged_df = pd.merge(left=swc_df[["node_id", "swc_type", "parent"]], 
-                            right=ftr_grouped,
-                            on="node_id",
-                            how="left")
-        if print_msg:
-            print("Data merged successfully.")
-        
-
-        # Preparing for the json tree construction
-        children_map = {}
-        node_labels = {}
-        root = None
-        
-        for _, row in merged_df.iterrows():
-            node = str(int(row['node_id']))
-            parent_val = row['parent']
-            
-            # Labels are already aggregated into a list from the groupby
-            # If label found -> add to the labels dicts with the node_id as key
-            labels = row['type']
-            if isinstance(labels, list):
-                node_labels[node] = labels
-            else:
-                node_labels[node] = []
+             node_labels[node] = []
                 
-            # Handle topology and find the root
-            # Assigning root nodes
-            if pd.isna(parent_val) or parent_val == -1: 
-                root = node
+         # Handle topology and find the root
+        # Assigning root nodes
+        if pd.isna(parent_val) or parent_val == -1: 
+            root = node
             
-            # Assigning rest of nodes
-            else:
-                parent = str(int(parent_val))
-                if parent not in children_map:
-                    children_map[parent] = []
-                children_map[parent].append(node)
-        if print_msg:
-            print("Neuron tree mapped.")
-        
-        # Incase there is no defined root note with parent values of -1.
-        if root is None:
-            raise ValueError("Could not find the root node (a node where parent is -1).")
-            
-        # Anti-infinite loop section, preventing from `node -> parent`, `parent -> node` loop to occure
-        # List of visited nodes
-        itirated = set()
+        # Assigning rest of nodes
+        else:
+            parent = str(int(parent_val))
+            if parent not in children_map:
+                children_map[parent] = []
+            children_map[parent].append(node)
 
-        def build_node(node_id):
-            # Stop execution if returning to previously visited node
-            if node_id in itirated:
-                raise RecursionError(f"Cycle detected in SWC file at node {node_id}. Fix the source data.")
-            itirated.add(node_id)
+    if print_msg:
+        print("Neuron tree mapped.")
+        
+    # Incase there is no defined root note with parent values of -1.
+    if root is None:
+        raise ValueError("Could not find the root node (a node where parent is -1).")
             
-            node_dict = {"nodeID": node_id,
-                        "nodeLabels": node_labels.get(node_id, [])} # Returning the node label, if not found returns empty list
+    # Anti-infinite loop section, preventing from `node -> parent`, `parent -> node` loop to occure
+    # List of visited nodes
+    itirated = set()
+
+    def build_node(node_id):
+        # Stop execution if returning to previously visited node
+        if node_id in itirated:
+            raise RecursionError(f"Cycle detected in SWC file at node {node_id}. Fix the source data.")
+        itirated.add(node_id)
             
-            children_list = []
-            if node_id in children_map:
-                for child_id in children_map[node_id]:
-                    children_list.append(build_node(child_id))
+        node_dict = {"nodeID": node_id,
+                     "nodeLabels": node_labels.get(node_id, [])} # Returning the node label, if not found returns empty list
+            
+        children_list = []
+        if node_id in children_map:
+            for child_id in children_map[node_id]:
+                children_list.append(build_node(child_id))
                     
-            return [node_dict, children_list]
+        return [node_dict, children_list]
         
-        # Build JSON, from the parent node to the leaves.
-        final_json = build_node(root)
+    # Build JSON, from the parent node to the leaves.
+    final_json = build_node(root)
         
-        # Export
-        mkdir([output_folder])
-        output_name = f"{file}.json"
-        output_path = os.path.join(output_folder, output_name)
+    # Export
+    if save_json & isinstance(save_path, str):
+        path_real = os.path.exists(save_path)
+        file_path = os.path.join(save_path, f"{neuron_id}.json")
 
-        with open(output_path, 'w') as f:
-            json.dump(final_json, f, separators=(',', ':')) 
-        
-        if print_msg:
-            print(f"Data successfully formatted and saved to {output_path} \n")
+        if os.path.exists(save_path) is False:
+            os.mkdir(save_path)
+
+        with open(file_path, 'w') as f:
+            json.dump(final_json, f, separators=(',', ':'))
