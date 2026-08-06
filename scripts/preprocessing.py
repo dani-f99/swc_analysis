@@ -30,6 +30,9 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
         print("> Function execution halted, old `swc_labels.parquet` file preserved.")
         return
 
+    if (overwrite_parquet is False) & (os.path.exists(parquet_path) is False):
+        print("> `swc_labels.parquet` havne't been found, creating a new file.")
+
     else:
         os.remove(parquet_path)
         print("> Old `swc_labels.parquet` deleted, creating a new file.")
@@ -144,7 +147,7 @@ def simplify_swc_topology(swc_input : pd.DataFrame,
     
     # Clean up the index and sorting so the file output is neat
     df_out = df_out.sort_values('node_id').reset_index(drop=True)
-    
+
     # Saving the file if needed (defualt it True)
     if save_csv:
         mkdir(output_path)
