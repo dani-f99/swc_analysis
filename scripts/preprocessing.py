@@ -250,7 +250,7 @@ def swc2json(swc_dataset : str,
     # Export
     if save_json & isinstance(save_path, str):
         path_real = os.path.exists(save_path)
-        file_path = os.path.join(save_path, f"{neuron_id}.json")
+        file_path = os.path.join(save_path, f"{neuron_id}_0.json")
 
         if os.path.exists(save_path) is False:
             os.mkdir(save_path)
