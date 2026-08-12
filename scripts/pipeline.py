@@ -1,18 +1,10 @@
-from scripts.preprocessing import simplify_swc_topology, swc2json, get_neurons_info
+from scripts.preprocessing import simplify_swc_topology, swc2json
 from scripts.processing import generate_internal_subtrees
-from scripts.helpers import mkdir
 
-from joblib import Parallel, delayed
-from tqdm import tqdm
 import pandas as pd
 import polars as pl
-import numpy as np
-import json
 import os
 
-
-# Force Polars to use a single thread to prevent nested parallelism crashes
-os.environ["POLARS_MAX_THREADS"] = "4"
 
 def process_neuron(neuron_itr):
     try:

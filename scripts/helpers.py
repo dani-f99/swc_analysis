@@ -1,4 +1,16 @@
 import os
+import json
+
+# Reading information from json file. Used to extract the parameters from the `config.json`.
+def read_json(path:str = "config.json") -> dict:
+    """
+    path : str -> path of the json file
+    """
+
+    with open(path) as config:
+        config_f = json.load(config)
+
+    return config_f
 
 
 ######################

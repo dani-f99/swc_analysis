@@ -1,9 +1,12 @@
 from pathlib import Path
+import subprocess
 import json
+import sys
+import csv
 import os
 
 
-
+####################################################
 def generate_internal_subtrees(input_json_path: str, 
                                neuron_number: str, 
                                output_dir: str = os.path.join("data","output_json")) -> None:
@@ -47,15 +50,10 @@ def generate_internal_subtrees(input_json_path: str,
     traverse(tree_data, is_main_root=True)
 
 
+
+####################################################
 # Clumpiness calculation
 #!/usr/bin/env python3
-import os
-import csv
-import subprocess
-import sys
-from pathlib import Path
-
-
 def draw_progress_bar(current, total, bar_length=40):
     """Draws a progress bar in the terminal to match the bash script's UI."""
     if total == 0:

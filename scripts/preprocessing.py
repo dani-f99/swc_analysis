@@ -1,5 +1,5 @@
 #################################
-from scripts.helpers import mkdir, get_files
+from scripts.helpers import mkdir
 from tqdm import tqdm
 import pandas as pd
 import json
