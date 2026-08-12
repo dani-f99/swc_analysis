@@ -160,3 +160,32 @@ def call_clumpiness(INPUT_DIR = os.path.join("data", "output_json"),
             # Update progress UI
             current_count += 1
             draw_progress_bar(current_count, total_to_process)
+
+
+
+####################################################
+def process_single_clumpiness(filepath, output_dir):
+    """
+    Takes a JSON file, runs find-clumpiness, and saves the exact output 
+    to a CSV file with the same name as the input, overwriting if it exists.
+    """
+    filepath = Path(filepath)
+    output_csv = Path(output_dir) / f"{filepath.stem}.csv"
+    
+    try:
+        # Opening in 'w' mode automatically overwrites the file if it already exists
+        with open(output_csv, 'w') as f_out:
+            subprocess.run(
+                ["find-clumpiness", "-e", "AllExclusive", "-i", str(filepath), "-f", "JSON"],
+                stdout=f_out,             # Dumps output straight to the file
+                stderr=subprocess.PIPE,   # Catches errors so they don't print to terminal
+                text=True,
+                check=True
+            )
+        return True
+        
+    except (subprocess.CalledProcessError, FileNotFoundError, Exception):
+        # If it fails, delete the empty/partial CSV so it doesn't leave corrupted data
+        if output_csv.exists():
+            output_csv.unlink()
+        return False

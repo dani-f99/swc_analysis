@@ -159,11 +159,16 @@ def simplify_swc_topology(swc_input : pd.DataFrame,
 
 ####################################################################
 ####################################################################
-def swc2json(swc_dataset : str,
-             neuron_id: str ,
-             save_json : bool = False,
+import os
+import json
+import ast
+import pandas as pd
+
+def swc2json(swc_dataset,
+             neuron_id: str,
+             save_json: bool = False,
              save_path: str = None,
-             print_msg : bool = False) -> None:
+             print_msg: bool = False) -> None:
     """
     Converts SWC and FTR files into a JSON structure suitable for find-clumpiness.
     swc_dataset : str -> SWC information with labels attached (synpase annotations).
@@ -176,17 +181,14 @@ def swc2json(swc_dataset : str,
     # Load csv or import pd.DataFrame object
     if isinstance(swc_dataset, pd.DataFrame):
         swc_df = swc_dataset
-
     elif isinstance(swc_dataset, str):
         try:
             swc_df = pd.read_csv(swc_dataset, index_col=0)
-        except:
+        except Exception:
             raise Exception("> Invalid string input for `swc_dataset` argument")
-        
 
     swc_df["node_id"] = swc_df["node_id"].astype(int)
     swc_df["parent"] = swc_df["parent"].astype(int)
-
 
     # Preparing for the json tree construction
     children_map = {}
@@ -197,16 +199,33 @@ def swc2json(swc_dataset : str,
         node = str(int(row['node_id']))
         parent_val = row['parent']
             
-         # Labels are already aggregated into a list from the groupby
-        # If label found -> add to the labels dicts with the node_id as key
-        labels = row['type']
-        if isinstance(labels, list):
-            node_labels[node] = labels
-        else:
-             node_labels[node] = []
+        # Safely parse the labels column whether it's a list, a stringified list, or NaN
+        raw_labels = row['type']
+        parsed_labels = []
+
+        if pd.notna(raw_labels):
+            if isinstance(raw_labels, list):
+                # If passed directly as a DataFrame where lists are preserved
+                parsed_labels = [str(x).strip().lower() for x in raw_labels]
+            elif isinstance(raw_labels, str):
+                raw_labels = raw_labels.strip()
+                if raw_labels.startswith('[') and raw_labels.endswith(']'):
+                    try:
+                        # Safely evaluate the stringified list "['label1', 'label2']"
+                        evaluated = ast.literal_eval(raw_labels)
+                        if isinstance(evaluated, list):
+                            parsed_labels = [str(x).strip().lower() for x in evaluated]
+                        else:
+                            parsed_labels = [str(evaluated).strip().lower()]
+                    except (ValueError, SyntaxError):
+                        parsed_labels = [raw_labels.lower()]
+                else:
+                    # Handle basic comma-separated strings if they occur
+                    parsed_labels = [x.strip().lower() for x in raw_labels.split(',')]
+                    
+        node_labels[node] = parsed_labels
                 
-         # Handle topology and find the root
-        # Assigning root nodes
+        # Handle topology and find the root
         if pd.isna(parent_val) or parent_val == -1: 
             root = node
             
@@ -225,7 +244,6 @@ def swc2json(swc_dataset : str,
         raise ValueError("Could not find the root node (a node where parent is -1).")
             
     # Anti-infinite loop section, preventing from `node -> parent`, `parent -> node` loop to occure
-    # List of visited nodes
     itirated = set()
 
     def build_node(node_id):
@@ -234,8 +252,10 @@ def swc2json(swc_dataset : str,
             raise RecursionError(f"Cycle detected in SWC file at node {node_id}. Fix the source data.")
         itirated.add(node_id)
             
-        node_dict = {"nodeID": node_id,
-                     "nodeLabels": node_labels.get(node_id, [])} # Returning the node label, if not found returns empty list
+        node_dict = {
+            "nodeID": node_id,
+            "nodeLabels": node_labels.get(node_id, [])
+        }
             
         children_list = []
         if node_id in children_map:
@@ -248,12 +268,11 @@ def swc2json(swc_dataset : str,
     final_json = build_node(root)
         
     # Export
-    if save_json & isinstance(save_path, str):
-        path_real = os.path.exists(save_path)
-        file_path = os.path.join(save_path, f"{neuron_id}_0.json")
-
-        if os.path.exists(save_path) is False:
+    if save_json and isinstance(save_path, str):
+        if not os.path.exists(save_path):
             os.mkdir(save_path)
+            
+        file_path = os.path.join(save_path, f"{neuron_id}_0.json")
 
         with open(file_path, 'w') as f:
             json.dump(final_json, f, separators=(',', ':'))

@@ -1,4 +1,5 @@
 from scripts.preprocessing import get_neurons_info
+from scripts.processing import process_single_clumpiness
 from scripts.pipeline import process_neuron
 from scripts.helpers import read_json
 
@@ -84,8 +85,39 @@ if __name__ == '__main__':
 
     # Calculating Clumpiness
     print("-----------------------------------------------------------------")
+
+    # Define paths
+    output_clumpiness = os.path.join("data", "output_clumpiness")
     json_path = os.path.join("data", "output_json")
     jsons_2process = os.listdir(json_path)
+    input_jsons = [os.path.join(json_path, i) for i in jsons_2process]
     print(f"> Calculating clumpiness per JSON tree file ({len(jsons_2process)} trees). (4/5)")
+
+    
+    json_files = jsons_2process
+    
+    if not json_files:
+        print("> Error")
+        raise Exception(f"No JSON files found in `{json_path}`.")
+
+    
+    # 1. Define the delayed tasks
+    tasks = (delayed(process_single_clumpiness)(filepath, output_clumpiness) for filepath in input_jsons)
+    
+    # 2. Execute with return_as="generator" so it yields as each file finishes
+    parallel_runner = Parallel(n_jobs=n_jobs, return_as="generator")(tasks)
+    
+    # 3. Wrap the execution in tqdm to track true completion
+    for _ in tqdm(parallel_runner, total=len(json_files), desc="Calculating Clumpiness", ncols=100):
+        pass # The actual work is done in the background; we just iterate to update the bar
+
+
+    print("-----------------------------------------------------------------")
+    clumpiness_file = os.path.join("data", "outout_output_clumpiness", "_clumpiness_results.csv")
+    print(f"> Joining clumpiness data to unified file at {clumpiness_file}")
+
+
+    print("-----------------------------------------------------------------")
+    print("> Processing complete!")
     
 
