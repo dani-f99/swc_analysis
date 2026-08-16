@@ -1,5 +1,7 @@
 from scripts.preprocessing import simplify_swc_topology, swc2json
 from scripts.processing import generate_internal_subtrees
+from scripts.helpers import read_json
+
 
 import pandas as pd
 import polars as pl
@@ -55,7 +57,13 @@ def process_neuron(neuron_itr):
         save_path = os.path.join("data", "input_swc", "simplified", f"{neuron_itr}.csv")
         swc_labeled["type"] = swc_labeled.groupby("node_id")["type"].unique().apply(lambda X : X[0] if len(X) <= 1 else ",".join(X)) # joining labels if more then 2 per node
         swc_labeled = swc_labeled.drop_duplicates(subset=["node_id", "parent"], keep="first")                                        # dropping rows with the same parent+node_id
-        swc_labeled.to_csv(save_path)
+
+        overwrite_info = read_json(path="config.json")["overwrite_info"]
+        bool_val = overwrite_info.lower()
+        overwrite_par = (True if bool_val == "true" else False)
+
+        if (overwrite_par) or (os.path.exists(save_path) is False):
+            swc_labeled.to_csv(save_path)
 
 
         #########################################

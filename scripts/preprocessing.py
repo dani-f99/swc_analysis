@@ -26,11 +26,11 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
     """
 
     parquet_path = os.path.join(main_path, "swc_labels.parquet")
-    if (overwrite_parquet is False) & os.path.exists(parquet_path):
+    if (overwrite_parquet is False) and os.path.exists(parquet_path):
         print("> Function execution halted, old `swc_labels.parquet` file preserved.")
         return
 
-    if (overwrite_parquet is False) & (os.path.exists(parquet_path) is False):
+    if (overwrite_parquet is False) and (os.path.exists(parquet_path) is False):
         print("> `swc_labels.parquet` havne't been found, creating a new file.")
 
     else:
@@ -94,7 +94,8 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
 def simplify_swc_topology(swc_input : pd.DataFrame,
                           swc_name : str,
                           save_csv : bool = True,
-                          output_path : str = "simplified_swc") -> pd.DataFrame:
+                          output_path : str = "simplified_swc"
+                          ) -> pd.DataFrame:
     """
     Custom function that covnerts swc neuron file to simplified format without excessive internal nodes.
     swc_input : pd.DataFrame / string file path -> input data
@@ -168,7 +169,8 @@ def swc2json(swc_dataset,
              neuron_id: str,
              save_json: bool = False,
              save_path: str = None,
-             print_msg: bool = False) -> None:
+             print_msg: bool = False,
+             overwrite: bool = False) -> None:
     """
     Converts SWC and FTR files into a JSON structure suitable for find-clumpiness.
     swc_dataset : str -> SWC information with labels attached (synpase annotations).
@@ -177,102 +179,107 @@ def swc2json(swc_dataset,
     output_folder: str -> Folder to which save the processed json file.
     print_msg : bool = False -> if True will print messege about the processed neuron.
     """
-    
-    # Load csv or import pd.DataFrame object
-    if isinstance(swc_dataset, pd.DataFrame):
-        swc_df = swc_dataset
-    elif isinstance(swc_dataset, str):
-        try:
-            swc_df = pd.read_csv(swc_dataset, index_col=0)
-        except Exception:
-            raise Exception("> Invalid string input for `swc_dataset` argument")
+    output_file = os.path.join(save_path, f"{neuron_id}_0.json")
 
-    swc_df["node_id"] = swc_df["node_id"].astype(int)
-    swc_df["parent"] = swc_df["parent"].astype(int)
+    if (overwrite is False) and (os.path.exists(output_file)):
+        return
 
-    # Preparing for the json tree construction
-    children_map = {}
-    node_labels = {}
-    root = None
-        
-    for _, row in swc_df.iterrows():
-        node = str(int(row['node_id']))
-        parent_val = row['parent']
+    else:
+        # Load csv or import pd.DataFrame object
+        if isinstance(swc_dataset, pd.DataFrame):
+            swc_df = swc_dataset
+        elif isinstance(swc_dataset, str):
+            try:
+                swc_df = pd.read_csv(swc_dataset, index_col=0)
+            except Exception:
+                raise Exception("> Invalid string input for `swc_dataset` argument")
+
+        swc_df["node_id"] = swc_df["node_id"].astype(int)
+        swc_df["parent"] = swc_df["parent"].astype(int)
+
+        # Preparing for the json tree construction
+        children_map = {}
+        node_labels = {}
+        root = None
             
-        # Safely parse the labels column whether it's a list, a stringified list, or NaN
-        raw_labels = row['type']
-        parsed_labels = []
-
-        if pd.notna(raw_labels):
-            if isinstance(raw_labels, list):
-                # If passed directly as a DataFrame where lists are preserved
-                parsed_labels = [str(x).strip().lower() for x in raw_labels]
-            elif isinstance(raw_labels, str):
-                raw_labels = raw_labels.strip()
-                if raw_labels.startswith('[') and raw_labels.endswith(']'):
-                    try:
-                        # Safely evaluate the stringified list "['label1', 'label2']"
-                        evaluated = ast.literal_eval(raw_labels)
-                        if isinstance(evaluated, list):
-                            parsed_labels = [str(x).strip().lower() for x in evaluated]
-                        else:
-                            parsed_labels = [str(evaluated).strip().lower()]
-                    except (ValueError, SyntaxError):
-                        parsed_labels = [raw_labels.lower()]
-                else:
-                    # Handle basic comma-separated strings if they occur
-                    parsed_labels = [x.strip().lower() for x in raw_labels.split(',')]
-                    
-        node_labels[node] = parsed_labels
+        for _, row in swc_df.iterrows():
+            node = str(int(row['node_id']))
+            parent_val = row['parent']
                 
-        # Handle topology and find the root
-        if pd.isna(parent_val) or parent_val == -1: 
-            root = node
-            
-        # Assigning rest of nodes
-        else:
-            parent = str(int(parent_val))
-            if parent not in children_map:
-                children_map[parent] = []
-            children_map[parent].append(node)
+            # Safely parse the labels column whether it's a list, a stringified list, or NaN
+            raw_labels = row['type']
+            parsed_labels = []
 
-    if print_msg:
-        print("Neuron tree mapped.")
-        
-    # Incase there is no defined root note with parent values of -1.
-    if root is None:
-        raise ValueError("Could not find the root node (a node where parent is -1).")
-            
-    # Anti-infinite loop section, preventing from `node -> parent`, `parent -> node` loop to occure
-    itirated = set()
-
-    def build_node(node_id):
-        # Stop execution if returning to previously visited node
-        if node_id in itirated:
-            raise RecursionError(f"Cycle detected in SWC file at node {node_id}. Fix the source data.")
-        itirated.add(node_id)
-            
-        node_dict = {
-            "nodeID": node_id,
-            "nodeLabels": node_labels.get(node_id, [])
-        }
-            
-        children_list = []
-        if node_id in children_map:
-            for child_id in children_map[node_id]:
-                children_list.append(build_node(child_id))
+            if pd.notna(raw_labels):
+                if isinstance(raw_labels, list):
+                    # If passed directly as a DataFrame where lists are preserved
+                    parsed_labels = [str(x).strip().lower() for x in raw_labels]
+                elif isinstance(raw_labels, str):
+                    raw_labels = raw_labels.strip()
+                    if raw_labels.startswith('[') and raw_labels.endswith(']'):
+                        try:
+                            # Safely evaluate the stringified list "['label1', 'label2']"
+                            evaluated = ast.literal_eval(raw_labels)
+                            if isinstance(evaluated, list):
+                                parsed_labels = [str(x).strip().lower() for x in evaluated]
+                            else:
+                                parsed_labels = [str(evaluated).strip().lower()]
+                        except (ValueError, SyntaxError):
+                            parsed_labels = [raw_labels.lower()]
+                    else:
+                        # Handle basic comma-separated strings if they occur
+                        parsed_labels = [x.strip().lower() for x in raw_labels.split(',')]
+                        
+            node_labels[node] = parsed_labels
                     
-        return [node_dict, children_list]
-        
-    # Build JSON, from the parent node to the leaves.
-    final_json = build_node(root)
-        
-    # Export
-    if save_json and isinstance(save_path, str):
-        if not os.path.exists(save_path):
-            os.mkdir(save_path)
-            
-        file_path = os.path.join(save_path, f"{neuron_id}_0.json")
+            # Handle topology and find the root
+            if pd.isna(parent_val) or parent_val == -1: 
+                root = node
+                
+            # Assigning rest of nodes
+            else:
+                parent = str(int(parent_val))
+                if parent not in children_map:
+                    children_map[parent] = []
+                children_map[parent].append(node)
 
-        with open(file_path, 'w') as f:
-            json.dump(final_json, f, separators=(',', ':'))
+        if print_msg:
+            print("Neuron tree mapped.")
+            
+        # Incase there is no defined root note with parent values of -1.
+        if root is None:
+            raise ValueError("Could not find the root node (a node where parent is -1).")
+                
+        # Anti-infinite loop section, preventing from `node -> parent`, `parent -> node` loop to occure
+        itirated = set()
+
+        def build_node(node_id):
+            # Stop execution if returning to previously visited node
+            if node_id in itirated:
+                raise RecursionError(f"Cycle detected in SWC file at node {node_id}. Fix the source data.")
+            itirated.add(node_id)
+                
+            node_dict = {
+                "nodeID": node_id,
+                "nodeLabels": node_labels.get(node_id, [])
+            }
+                
+            children_list = []
+            if node_id in children_map:
+                for child_id in children_map[node_id]:
+                    children_list.append(build_node(child_id))
+                        
+            return [node_dict, children_list]
+            
+        # Build JSON, from the parent node to the leaves.
+        final_json = build_node(root)
+            
+        # Export
+        if save_json and isinstance(save_path, str):
+            if not os.path.exists(save_path):
+                os.mkdir(save_path)
+                
+            file_path = output_file
+
+            with open(file_path, 'w') as f:
+                json.dump(final_json, f, separators=(',', ':'))

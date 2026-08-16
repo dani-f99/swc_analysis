@@ -7,9 +7,14 @@ import os
 
 
 ####################################################
+import json
+import os
+from pathlib import Path
+
 def generate_internal_subtrees(input_json_path: str, 
-                               neuron_number: str, 
-                               output_dir: str = os.path.join("data","output_json")) -> None:
+                               neuron_number: str,
+                               overwrite: bool = False, 
+                               output_dir: str = os.path.join("data", "output_json")) -> None:
     """
     Parses a nested JSON tree of a neuron and exports all internal sub-trees 
     (excluding the main root and leaves) into individual JSON files.
@@ -38,11 +43,14 @@ def generate_internal_subtrees(input_json_path: str,
             if not is_main_root:
                 output_filename = f"{neuron_number}_{node_id}.json"
                 output_filepath = out_dir / output_filename
-                
-                with open(output_filepath, 'w') as out_f:
-                    json.dump(current_node, out_f)  # Add `indent=2` here if you prefer formatted JSON
 
-            # Recursively process all children
+                # Only write if overwrite is True OR the file doesn't exist
+                # Using pathlib's .exists() is cleaner than os.path.exists()
+                if overwrite or not output_filepath.exists():
+                    with open(output_filepath, 'w') as out_f:
+                        json.dump(current_node, out_f)
+
+            # ALWAYS recursively process all children, even if we skipped writing the parent
             for child in children:
                 traverse(child, is_main_root=False)
 
@@ -164,28 +172,34 @@ def call_clumpiness(INPUT_DIR = os.path.join("data", "output_json"),
 
 
 ####################################################
-def process_single_clumpiness(filepath, output_dir):
+def process_single_clumpiness(filepath: str, 
+                              output_dir: str,
+                              overwrite: bool = False):
     """
     Takes a JSON file, runs find-clumpiness, and saves the exact output 
     to a CSV file with the same name as the input, overwriting if it exists.
     """
     filepath = Path(filepath)
     output_csv = Path(output_dir) / f"{filepath.stem}.csv"
-    
-    try:
-        # Opening in 'w' mode automatically overwrites the file if it already exists
-        with open(output_csv, 'w') as f_out:
-            subprocess.run(
-                ["find-clumpiness", "-e", "AllExclusive", "-i", str(filepath), "-f", "JSON"],
-                stdout=f_out,             # Dumps output straight to the file
-                stderr=subprocess.PIPE,   # Catches errors so they don't print to terminal
-                text=True,
-                check=True
-            )
-        return True
-        
-    except (subprocess.CalledProcessError, FileNotFoundError, Exception):
-        # If it fails, delete the empty/partial CSV so it doesn't leave corrupted data
-        if output_csv.exists():
-            output_csv.unlink()
-        return False
+
+    if (overwrite is False) and (os.path.exists(output_csv)):
+        return
+
+    else:
+        try:
+            # Opening in 'w' mode automatically overwrites the file if it already exists
+            with open(output_csv, 'w') as f_out:
+                subprocess.run(
+                    ["find-clumpiness", "-e", "AllExclusive", "-i", str(filepath), "-f", "JSON"],
+                    stdout=f_out,             # Dumps output straight to the file
+                    stderr=subprocess.PIPE,   # Catches errors so they don't print to terminal
+                    text=True,
+                    check=True
+                )
+            return True
+            
+        except (subprocess.CalledProcessError, FileNotFoundError, Exception):
+            # If it fails, delete the empty/partial CSV so it doesn't leave corrupted data
+            if output_csv.exists():
+                output_csv.unlink()
+            return False

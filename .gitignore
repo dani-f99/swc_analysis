@@ -4,6 +4,7 @@ data/swc_input
 data/input_labels
 data/output_json
 data/output_clumpiness
+_misc
 
 
 # Byte-compiled / optimized / DLL files
