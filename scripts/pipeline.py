@@ -71,7 +71,8 @@ def process_neuron(neuron_itr):
         swc2json(swc_dataset=swc_labeled.drop_duplicates(),
                     neuron_id=neuron_itr,
                     save_json=True,
-                    save_path=os.path.join("data", "output_json"))
+                    save_path=os.path.join("data", "output_json"),
+                    overwrite=overwrite_par)
 
 
         ##################################################################
@@ -79,7 +80,8 @@ def process_neuron(neuron_itr):
         # Example Usage:
         generate_internal_subtrees(input_json_path = os.path.join("data","output_json",f"{neuron_itr}_0.json"), 
                                     neuron_number = neuron_itr, 
-                                    output_dir = os.path.join("data", "output_json"))
+                                    output_dir = os.path.join("data", "output_json"),
+                                    overwrite=overwrite_par)
         
 
         return f"Success: {neuron_itr}"
