@@ -1,16 +1,21 @@
+#########
+# Imports
+from scripts.helpers import  chunked_iterable
+
+from joblib import Parallel, delayed
+import pyarrow.parquet as pq
 from pathlib import Path
+from tqdm import tqdm
+import pyarrow as pa
+import pandas as pd
 import subprocess
+import uuid
 import json
-import sys
-import csv
 import os
 
 
 ####################################################
-import json
-import os
-from pathlib import Path
-
+####################################################
 def generate_internal_subtrees(input_json_path: str, 
                                neuron_number: str,
                                overwrite: bool = False, 
@@ -18,6 +23,11 @@ def generate_internal_subtrees(input_json_path: str,
     """
     Parses a nested JSON tree of a neuron and exports all internal sub-trees 
     (excluding the main root and leaves) into individual JSON files.
+    
+    input_json_path: str -> File path of the json file to be processed.
+    neuron_number: str -> String which represents the neuron id.
+    overwrite: bool -> If argument 'overwrite' is True, will overwrite data if already exists (Defualt is False). 
+    output_dir: str -> String path of the output folder to which the processed file will be saved to.
     """
     input_path = Path(input_json_path)
     out_dir = Path(output_dir)
@@ -58,126 +68,64 @@ def generate_internal_subtrees(input_json_path: str,
     traverse(tree_data, is_main_root=True)
 
 
+#####################################
+#####################################
+def _process_single_neuron(filepath):
+    """
+    Worker function executed in parallel. 
+    Prints removed to prevent terminal output corruption.
 
-####################################################
-# Clumpiness calculation
-#!/usr/bin/env python3
-def draw_progress_bar(current, total, bar_length=40):
-    """Draws a progress bar in the terminal to match the bash script's UI."""
-    if total == 0:
-        return
-    percent = int((current * 100) / total)
-    filled = int((current * bar_length) / total)
-    empty = bar_length - filled
-    bar = '#' * filled + '-' * empty
-    # \r overwrites the current terminal line
-    sys.stdout.write(f"\r[{bar}] {percent}% ({current}/{total})")
-    sys.stdout.flush()
-
-def call_clumpiness(INPUT_DIR = os.path.join("data", "output_json"),
-                    OUTPUT_DIR = os.path.join("data", "output_clumpiness"),
-                    OUTPUT_FILE = os.path.join("data", "clumpiness.csv")):
-    # 1. Ensure the output directory exists
-    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
-
-    # 2. RESUME CAPABILITY: Load already processed IDs
-    processed_ids = set()
-    if OUTPUT_FILE.exists():
-        print("Found existing output file. Indexing already processed neuron IDs...")
-        with open(OUTPUT_FILE, 'r', newline='') as f:
-            reader = csv.reader(f)
-            # Skip header
-            next(reader, None) 
-            for row in reader:
-                if row:
-                    # Strip quotes from the first column to match bash tr -d '"'
-                    clean_id = row[0].strip('"') 
-                    processed_ids.add(clean_id)
-        print(f"Found {len(processed_ids)} already processed neurons.")
-    else:
-        # Create fresh file with headers
-        with open(OUTPUT_FILE, 'w', newline='') as f:
-            f.write("neuron_id,groups,clumpiness\n")
-
-    # 3. PREPARE FILE LIST
-    print("Scanning input directory for JSON files...")
-    input_path = Path(INPUT_DIR)
+    filepath: str -> Path to the JSON neuron clumpiness tree, on which the clumpiness calculation will be made.
+    """
+    neuron_id = filepath.stem
+    temp_filename = f"temp_clump_{uuid.uuid4().hex}.csv"
     
-    if not input_path.exists() or not input_path.is_dir():
-        print(f"Error: Directory '{INPUT_DIR}' does not exist.")
-        sys.exit(1)
-
-    # Using pathlib.glob handles large directory lists gracefully in memory
-    json_files = list(input_path.glob("*.json"))
-    total_files = len(json_files)
-
-    if total_files == 0:
-        print(f"No JSON files found in {INPUT_DIR}.")
-        sys.exit(0)
-
-    # Filter out already processed files (neuron_id is the filename without extension)
-    files_to_process = [f for f in json_files if f.stem not in processed_ids]
-    total_to_process = len(files_to_process)
-
-    if total_to_process <= 0:
-        print(f"All {total_files} files have already been processed. Nothing to do!")
-        sys.exit(0)
-
-    print(f"Total files: {total_files} | Remaining to process: {total_to_process}")
-
-    # 4 & 5. EXECUTION LOOP
-    current_count = 0
-    
-    # Open the CSV in append mode so we can write lines as they finish
-    with open(OUTPUT_FILE, 'a', newline='') as out_f:
-        for filepath in files_to_process:
-            neuron_id = filepath.stem
+    try:
+        result = subprocess.run(
+            ["find-clumpiness", "-e", "AllExclusive", "-i", str(filepath), "-f", "JSON"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        lines = result.stdout.strip().splitlines()
+        
+        if len(lines) <= 1:
+            return None
             
-            try:
-                # Run the command and capture stdout
-                result = subprocess.run(
-                    ["find-clumpiness", "-e", "AllExclusive", "-i", str(filepath), "-f", "JSON"],
-                    capture_output=True,
-                    text=True,
-                    check=True # Raises exception if command fails (non-zero exit status)
-                )
-                
-                # Parse output (Replaces the awk command)
-                lines = result.stdout.strip().splitlines()
-                
-                # lines[0] is the header, skip it
-                for line in lines[1:]:
-                    parts = line.split(',')
-                    if len(parts) >= 3:
-                        col1 = parts[0].strip()
-                        col2 = parts[1].strip()
-                        col3 = parts[2].strip()
-                        
-                        # Format string to match: "neuron_id",col1-col2,col3
-                        formatted_result = f'"{neuron_id}",{col1}-{col2},{col3}\n'
-                        out_f.write(formatted_result)
-                        
-            except subprocess.CalledProcessError as e:
-                # Triggers if find-clumpiness returns an error code
-                print(f"\nError processing {neuron_id}: {e.stderr}")
-            except FileNotFoundError:
-                # Triggers if the system literally cannot find the find-clumpiness executable
-                print("\nError: 'find-clumpiness' command not found. Ensure it is installed and in your system PATH.")
-                sys.exit(1)
-
-            # Update progress UI
-            current_count += 1
-            draw_progress_bar(current_count, total_to_process)
+        with open(temp_filename, 'w', newline='') as temp_out:
+            for line in lines[1:]:
+                parts = line.split(',')
+                if len(parts) >= 3:
+                    col1 = parts[0].strip()
+                    col2 = parts[1].strip()
+                    col3 = parts[2].strip()
+                    
+                    formatted_result = f'"{neuron_id}",{col1}-{col2},{col3}\n'
+                    temp_out.write(formatted_result)
+                    
+        return temp_filename
+        
+    except subprocess.CalledProcessError:
+        # Silently fail or log to a file instead of printing
+        return None
+    except FileNotFoundError:
+        # Command not found
+        return None
 
 
-
-####################################################
+######################################################
+######################################################
 def process_single_clumpiness(filepath: str, 
                               output_dir: str,
                               overwrite: bool = False):
     """
     Takes a JSON file, runs find-clumpiness, and saves the exact output 
     to a CSV file with the same name as the input, overwriting if it exists.
+
+    filepath: str -> String path to the JSON file containing the neuron tree.
+    output_dir: str -> String path to which the clumpiness results will be save to.
+    overwrite: bool -> If argument 'overwrite' is True, will overwrite data if already exists (Defualt is False).
     """
     filepath = Path(filepath)
     output_csv = Path(output_dir) / f"{filepath.stem}.csv"
@@ -203,3 +151,92 @@ def process_single_clumpiness(filepath: str,
             if output_csv.exists():
                 output_csv.unlink()
             return False
+
+
+##############################################
+##############################################
+def process_clumpiness_csv(filepath_str: str):
+    """
+    Reads a single CSV, safely skips empty files, and appends ID columns.
+
+    filepath_str: str ->
+    """
+    filepath = Path(filepath_str)
+    
+    # Fast-skip: Files <= 32 bytes physically cannot contain data rows
+    if os.path.getsize(filepath) <= 32:
+        return None
+        
+    try:
+        df = pd.read_csv(filepath)
+        if df.empty:
+            return None
+            
+        neuron_id, node_id = filepath.stem.split('_')
+        
+        df['neuron_id'] = neuron_id
+        df['node_id'] = node_id
+        
+        return df
+        
+    except Exception:
+        return None
+
+
+################################################
+################################################
+def compile_unified_dataset(input_directory: str, 
+                            output_filepath: str, 
+                            batch_size: int = 2000) -> None:
+    """
+    Iterates over CSVs and processes them using joblib for robust parallel execution.
+
+    input_directory: str -> String input clumpiness csv's folder.
+    output_filepath: str -> String output of the joined clumpiness file.
+    batch_size: str -> Number of itirations per batch of processing.
+    """
+
+    def get_csv_files():
+        with os.scandir(input_directory) as entries:
+            for entry in entries:
+                if entry.name.endswith('.csv') and entry.is_file():
+                    yield entry.path
+
+    writer = None
+    n_jobs = min(4, (os.cpu_count() or 1))
+    
+    with tqdm(desc="Compiling Parquet", unit=" files") as pbar:
+        for file_chunk in chunked_iterable(get_csv_files(), batch_size):
+            
+            # joblib handles the worker pool much more safely on Windows
+            results = Parallel(n_jobs=n_jobs, backend="loky")(
+                delayed(process_clumpiness_csv)(f) for f in file_chunk
+            )
+            
+            valid_dfs = [df for df in results if df is not None]
+            
+            if valid_dfs:
+                batch_df = pd.concat(valid_dfs, ignore_index=True)
+                table = pa.Table.from_pandas(batch_df)
+                
+                if writer is None:
+                    writer = pq.ParquetWriter(output_filepath, table.schema, compression='ZSTD')
+                
+                writer.write_table(table)
+            
+            pbar.update(len(file_chunk))
+            
+    if writer:
+        writer.close()
+    print("> Dataset compilation complete.")
+
+
+
+
+if __name__ == "__main__":
+    input_dir = os.path.join("data", "output_clumpiness")
+    output_file = os.path.join("data", "unified_clumpiness.parquet")
+    
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+    
+    compile_unified_dataset(input_dir, output_file)

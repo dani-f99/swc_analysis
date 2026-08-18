@@ -1,18 +1,20 @@
 from scripts.preprocessing import get_neurons_info
-from scripts.processing import process_single_clumpiness
+from scripts.processing import process_single_clumpiness, compile_unified_dataset
 from scripts.pipeline import process_neuron
 from scripts.helpers import read_json
 
 from joblib import Parallel, delayed
+from pathlib import Path
 from tqdm import tqdm
 import polars as pl
 import numpy as np
 import os
 
+n_steps = 6
 
 if __name__ == '__main__':
     print("-----------------------------------------------------------------")
-    print("> Loading paths and creating folders. (1/5)")
+    print(f"> Loading paths and creating folders. (1/{n_steps})")
     # Loading config presets
     config = read_json(path="config.json")
     swc_path, labels_path, prquet_labels_path, overwrite_info, data_limit, n_threads, n_jobs =  [config["swc_path"].split(","),
@@ -45,7 +47,7 @@ if __name__ == '__main__':
     print("> Files and paths loaded.")
 
     print("-----------------------------------------------------------------")
-    print("> Creating unified labels file for every relevent SWC tree. (2/5)")
+    print(f"> Creating unified labels file for every relevent SWC tree. (2/{n_steps})")
     # Getting a list of the aviable SWC file in the swc input folder
     swc_files = [i.split(".")[0] for i in os.listdir(swc_path)]
 
@@ -71,7 +73,7 @@ if __name__ == '__main__':
         tasks = swc_relv
 
     print("-----------------------------------------------------------------")
-    print(f"Starting processing of {len(tasks)} neurons. (3/5)")
+    print(f"Starting processing of {len(tasks)} neurons. (3/{n_steps})")
 
     # Execute in parallel using Joblib
     # n_jobs=4 limits the pool to 4 cores to prevent memory exhaustion. 
@@ -91,7 +93,7 @@ if __name__ == '__main__':
     json_path = os.path.join("data", "output_json")
     jsons_2process = os.listdir(json_path)
     input_jsons = [os.path.join(json_path, i) for i in jsons_2process]
-    print(f"> Calculating clumpiness per JSON tree file ({len(jsons_2process)} trees). (4/5)")
+    print(f"> Calculating clumpiness per JSON tree file ({len(jsons_2process)} trees). (4/{n_steps})")
 
     
     json_files = jsons_2process
@@ -113,8 +115,17 @@ if __name__ == '__main__':
 
 
     print("-----------------------------------------------------------------")
-    clumpiness_file = os.path.join("data", "outout_output_clumpiness", "_clumpiness_results.csv")
-    print(f"> Joining clumpiness data to unified file at {clumpiness_file}")
+    input_dir = os.path.join("data", "output_clumpiness")
+    output_file = os.path.join("data", "unified_clumpiness.parquet")
+    print(f"> Joining clumpiness data to unified file at {output_file}. (5/{n_steps})")
+
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+    
+    compile_unified_dataset(input_dir, output_file)
+
+
+    print("-----------------------------------------------------------------")
+    print(f"> Assigning clumpiness results into the simplified SWC files. (6/{n_steps})")
 
 
     print("-----------------------------------------------------------------")

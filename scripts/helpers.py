@@ -1,6 +1,9 @@
-import os
+import itertools
 import json
+import sys
+import os
 
+############################################################################################
 # Reading information from json file. Used to extract the parameters from the `config.json`.
 def read_json(path:str = "config.json") -> dict:
     """
@@ -64,3 +67,41 @@ def get_files(dir:str = "input") -> list:
     return files_good
 
 
+#####################################################
+# Used to visualize process bar in joblib intirations
+def draw_progress_bar(current, 
+                      total, 
+                      bar_length=40):
+    """
+    Draws a progress bar in the terminal to match the bash script's UI.
+
+    current:
+    total: 
+    bar_length: int ->
+    
+    
+    """
+    if total == 0:
+        return
+    percent = int((current * 100) / total)
+    filled = int((current * bar_length) / total)
+    empty = bar_length - filled
+    bar = '#' * filled + '-' * empty
+    # \r overwrites the current terminal line
+    sys.stdout.write(f"\r[{bar}] {percent}% ({current}/{total})")
+    sys.stdout.flush()
+
+
+#####################################
+#####################################
+def chunked_iterable(iterable, 
+                     size):
+    """
+    Yields batches of a specified size from an iterable.
+    """
+    it = iter(iterable)
+    while True:
+        chunk = tuple(itertools.islice(it, size))
+        if not chunk:
+            break
+        yield chunk
