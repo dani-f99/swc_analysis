@@ -70,7 +70,7 @@ def generate_internal_subtrees(input_json_path: str,
 
 #####################################
 #####################################
-def _process_single_neuron(filepath):
+def _process_single_neuron(filepath:str):
     """
     Worker function executed in parallel. 
     Prints removed to prevent terminal output corruption.
@@ -229,14 +229,3 @@ def compile_unified_dataset(input_directory: str,
     if writer:
         writer.close()
     print("> Dataset compilation complete.")
-
-
-
-
-if __name__ == "__main__":
-    input_dir = os.path.join("data", "output_clumpiness")
-    output_file = os.path.join("data", "unified_clumpiness.parquet")
-    
-    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
-    
-    compile_unified_dataset(input_dir, output_file)

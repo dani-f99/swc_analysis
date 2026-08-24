@@ -3,6 +3,7 @@ from scripts.helpers import mkdir
 from tqdm import tqdm
 import pandas as pd
 import json
+import ast
 import os
 
 
@@ -160,11 +161,6 @@ def simplify_swc_topology(swc_input : pd.DataFrame,
 
 ####################################################################
 ####################################################################
-import os
-import json
-import ast
-import pandas as pd
-
 def swc2json(swc_dataset,
              neuron_id: str,
              save_json: bool = False,
