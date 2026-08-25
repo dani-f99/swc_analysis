@@ -4,6 +4,7 @@ from scripts.helpers import  chunked_iterable
 
 from joblib import Parallel, delayed
 import pyarrow.parquet as pq
+import pyarrow.dataset as ds
 from pathlib import Path
 from tqdm import tqdm
 import pyarrow as pa
@@ -229,3 +230,62 @@ def compile_unified_dataset(input_directory: str,
     if writer:
         writer.close()
     print("> Dataset compilation complete.")
+
+#################################################################################################################
+# > Worker function for joblib that joins SWCs file with their appropriate clumpiness results by neuron_id label.
+def join_swc_clumpiness(neuron_id: str , 
+                        path_2process: str, 
+                        save_path: str, 
+                        parquet_path: str):
+
+    """
+    neuron_id: str -> neuron id as string file.
+    path_2process: str -> path to the target swc files (to which the labels will be joined).
+    save_path: str -> path to the save output folder.
+    parquet_path -> path to the labels parquet file.
+    
+    """
+    i = neuron_id
+    output_path = os.path.join(save_path, f"{i}.csv")
+
+    # Early exit if the file already exists
+    if os.path.exists(output_path):
+        return
+
+    # Re-initialize the pyarrow dataset inside the worker
+    # This prevents pickling/serialization errors across different CPU cores
+    worker_dataset = ds.dataset(parquet_path, format="parquet")
+
+    # Defining required path and loading swc file
+    i_path = os.path.join(path_2process, f"{i}.csv")
+    i_swc = pd.read_csv(i_path, index_col=0)
+    
+    # Filter dataset for the specific neuron_id
+    i_label = worker_dataset.to_table(filter=(ds.field("neuron_id") == i)).to_pandas()
+    
+    # Optional safety check in case a neuron ID has no corresponding labels
+    if i_label.empty:
+        return
+        
+    i_label['node_id'] = i_label['node_id'].astype("int")
+
+    # Creating a unified labels column named 'label'
+    i_label.insert(loc=2, 
+                   column="label",
+                   value=i_label['property1'] + "_" + i_label['property2'])
+
+    # Use pivot_table instead of pivot, and specify the index
+    flipped_labels = i_label.pivot_table(index=['neuron_id', 'node_id'], 
+                                         columns='label',
+                                         values='value',
+                                         aggfunc='first').reset_index()
+
+    # Merging SWC and labels
+    i_merged = pd.merge(left=i_swc, 
+                        right=flipped_labels.iloc[:, 1:], 
+                        left_on="node_id", 
+                        right_on="node_id",
+                        how="left")
+
+    # Write out the file
+    i_merged.to_csv(output_path)

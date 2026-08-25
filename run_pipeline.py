@@ -1,9 +1,10 @@
 from scripts.preprocessing import get_neurons_info
-from scripts.processing import process_single_clumpiness, compile_unified_dataset
+from scripts.processing import process_single_clumpiness, compile_unified_dataset, join_swc_clumpiness
 from scripts.pipeline import process_neuron
 from scripts.helpers import read_json
 
 from joblib import Parallel, delayed
+import pyarrow.dataset as ds
 from pathlib import Path
 from tqdm import tqdm
 import polars as pl
@@ -126,6 +127,35 @@ if __name__ == '__main__':
 
     print("-----------------------------------------------------------------")
     print(f"> Assigning clumpiness results into the simplified SWC files. (6/{n_steps})")
+
+    # Define paths.
+    path_simple1 = os.path.join("data", "input_swc", "simplified")
+    path_simple2 = os.path.join("data", "input_swc", "simplified_swc")
+    path_og = os.path.join("data", "input_swc", "sk_lod1_783_healed")
+    path_2process = path_simple1
+    parquet_path = os.path.join("data", "unified_clumpiness.parquet")
+    save_path = os.path.join("data", "output_results")
+
+    # Ensure the output directory exists before spawning workers.
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    # Get list of relevant neurons (from the parquet)
+    dataset = ds.dataset(parquet_path, format="parquet")
+    table_neurons = dataset.to_table(columns=["neuron_id"]).to_pandas()
+    df_neuronsids = table_neurons['neuron_id'].unique()
+
+    # List of SWC files
+    swc_simplified_dir = [i.split(".")[0] for i in os.listdir(path_simple1)]
+    swc_og_dir = [i.split(".")[0] for i in os.listdir(path_og)]
+    
+    # Neurons to process
+    relv_files = np.intersect1d(df_neuronsids, swc_simplified_dir)
+
+    # > Iterating over the SWC files in parallel
+    # n_jobs=-1 tells joblib to use all available CPU cores
+    _capture = Parallel(n_jobs=-1)(delayed(join_swc_clumpiness)(i, path_2process, save_path, parquet_path) 
+                                for i in tqdm(relv_files, desc="Dispatching Tasks"))
 
 
     print("-----------------------------------------------------------------")
