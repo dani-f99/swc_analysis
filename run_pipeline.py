@@ -128,13 +128,11 @@ if __name__ == '__main__':
     print("-----------------------------------------------------------------")
     print(f"> Assigning clumpiness results into the simplified SWC files. (6/{n_steps})")
 
-    # Define paths.
-    path_simple1 = os.path.join("data", "input_swc", "simplified")
-    path_simple2 = os.path.join("data", "input_swc", "simplified_swc")
-    path_og = os.path.join("data", "input_swc", "sk_lod1_783_healed")
-    path_2process = path_simple1
-    parquet_path = os.path.join("data", "unified_clumpiness.parquet")
-    save_path = os.path.join("data", "output_results")
+    # Define paths (from config)
+    path_2process, parquet_path = [os.path.join(*config["results_swc_path"].split(",")), 
+                                   os.path.join(*config["results_labels_path"].split(","))]
+
+    save_path = os.path.join("data", "output_results", Path(path_2process).name)
 
     # Ensure the output directory exists before spawning workers.
     if not os.path.exists(save_path):
@@ -146,16 +144,15 @@ if __name__ == '__main__':
     df_neuronsids = table_neurons['neuron_id'].unique()
 
     # List of SWC files
-    swc_simplified_dir = [i.split(".")[0] for i in os.listdir(path_simple1)]
-    swc_og_dir = [i.split(".")[0] for i in os.listdir(path_og)]
-    
+    swc_dir = [i.split(".")[0] for i in os.listdir(path_2process)]
+
     # Neurons to process
-    relv_files = np.intersect1d(df_neuronsids, swc_simplified_dir)
+    relv_files = np.intersect1d(df_neuronsids, swc_dir)
 
     # > Iterating over the SWC files in parallel
     # n_jobs=-1 tells joblib to use all available CPU cores
-    _capture = Parallel(n_jobs=-1)(delayed(join_swc_clumpiness)(i, path_2process, save_path, parquet_path) 
-                                for i in tqdm(relv_files, desc="Dispatching Tasks"))
+    _capture = Parallel(n_jobs=n_jobs)(delayed(join_swc_clumpiness)(i, path_2process, save_path, parquet_path) 
+                                   for i in tqdm(relv_files, desc="Dispatching Tasks"))
 
 
     print("-----------------------------------------------------------------")

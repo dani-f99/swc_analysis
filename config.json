@@ -2,6 +2,8 @@
     "swc_path": "data,input_swc,sk_lod1_783_healed",
     "labels_path": "data,input_labels,processed_swc_data_princeton",
     "prquet_labels_path":"data,input_labels,swc_labels.parquet",
+    "results_swc_path":"data,input_swc,simplified",
+    "results_labels_path":"data,unified_clumpiness.parquet",
     "overwrite_info": "False",
     "data_limit":20,
     "n_threads":4,
