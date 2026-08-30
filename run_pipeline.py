@@ -1,7 +1,7 @@
 from scripts.preprocessing import get_neurons_info
 from scripts.processing import process_single_clumpiness, compile_unified_dataset, join_swc_clumpiness
 from scripts.pipeline import process_neuron
-from scripts.helpers import read_json
+from scripts.helpers import read_json, TimeStamp, log_to_report
 
 from joblib import Parallel, delayed
 import pyarrow.dataset as ds
@@ -14,17 +14,26 @@ import os
 n_steps = 6
 
 if __name__ == '__main__':
-    print("-----------------------------------------------------------------")
-    print(f"> Loading paths and creating folders. (1/{n_steps})")
     # Loading config presets
     config = read_json(path="config.json")
-    swc_path, labels_path, prquet_labels_path, overwrite_info, data_limit, n_threads, n_jobs =  [config["swc_path"].split(","),
-                                                                                                 config["labels_path"].split(","),
-                                                                                                 config["prquet_labels_path"].split(","),
-                                                                                                 config["overwrite_info"],
-                                                                                                 config["data_limit"],
-                                                                                                 config["n_threads"],
-                                                                                                 config["n_jobs"]]
+    run_name = swc_path, labels_path, prquet_labels_path, overwrite_info, data_limit, n_threads, n_jobs =  [config["run_name"],
+                                                                                                            config["swc_path"].split(","),
+                                                                                                            config["labels_path"].split(","),
+                                                                                                            config["prquet_labels_path"].split(","),
+                                                                                                            config["overwrite_info"],
+                                                                                                            config["data_limit"],
+                                                                                                            config["n_threads"],
+                                                                                                            config["n_jobs"]]
+
+    # Setting up report
+    path_report = os.path.join("data", "reports", f"{run_name}_report.txt")
+
+    print("-----------------------------------------------------------------")
+    # Setting time stamp calss for step 1
+    time1 = TimeStamp()       
+    time1_start = time1.set_start()
+
+    print(f"> Loading paths and creating folders. (1/{n_steps})")
 
     bool_val = overwrite_info.lower()
     overwrite_par = (True if bool_val == "true" else False)
@@ -46,6 +55,10 @@ if __name__ == '__main__':
     labels_path = os.path.join(*labels_path)
     prquet_labels_path = os.path.join(*prquet_labels_path)
     print("> Files and paths loaded.")
+
+    # Getting end time 
+    time1_start = time1.end()
+
 
     print("-----------------------------------------------------------------")
     print(f"> Creating unified labels file for every relevent SWC tree. (2/{n_steps})")

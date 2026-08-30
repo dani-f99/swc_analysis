@@ -1,4 +1,5 @@
 {
+    "run_name":"swc_analysis_test",
     "swc_path": "data,input_swc,sk_lod1_783_healed",
     "labels_path": "data,input_labels,processed_swc_data_princeton",
     "prquet_labels_path":"data,input_labels,swc_labels.parquet",

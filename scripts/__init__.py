@@ -1,7 +1,7 @@
 from scripts.helpers import mkdir
 import os 
 
-folders = ["data", "input_swc", "input_labels", "output_json", "output_clumpiness", "output_results"]
+folders = ["data", "input_swc", "input_labels", "output_json", "output_clumpiness", "output_results", "reports"]
 req_folders = ["data"] + [os.path.join(folders[0], i) for i in folders[1:]]
 
 for i in req_folders:
