@@ -94,8 +94,8 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
 ####################################################################
 def simplify_swc_topology(swc_input : pd.DataFrame,
                           swc_name : str,
+                          output_path : str,
                           save_csv : bool = True,
-                          output_path : str = "simplified_swc"
                           ) -> pd.DataFrame:
     """
     Custom function that covnerts swc neuron file to simplified format without excessive internal nodes.
@@ -152,8 +152,7 @@ def simplify_swc_topology(swc_input : pd.DataFrame,
 
     # Saving the file if needed (defualt it True)
     if save_csv:
-        mkdir(output_path)
-        df_out.to_csv(os.path.join(f"{swc_name}.csv"))
+        df_out.to_csv(os.path.join(output_path, f"{swc_name}.csv"))
 
     return df_out
 
