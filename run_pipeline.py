@@ -26,8 +26,8 @@ if debug:
                   True,  # Step 2 [V]
                   True,  # Step 3 [V]
                   True, # Step 4 [ ]
-                  False, # Step 5 [ ]
-                  False, # Step 6 [ ]
+                  True, # Step 5 [ ]
+                  True, # Step 6 [ ]
                  ]
 
 else:
@@ -81,7 +81,8 @@ if __name__ == '__main__':
                                 path_simplified_swc,
                                 path_clumpiness,
                                 path_json,
-                                path_results
+                                path_results,
+                                path_labels
                                 ]
 
 
@@ -110,12 +111,13 @@ if __name__ == '__main__':
 
         # Step 1 failure 
         except Exception as err:
-            print("> Step 1 failed.")
             error_message = traceback.format_exc()
             log_to_report(file_path=path_report,
                           message=f"{report_spacer} \n>  step 1 Failed \n> Error messege:\n> {error_message}\n",
                           add_timestamp=True,
                           mode="w")
+
+            raise Exception("> Step 1 Failed.")
 
 
 
@@ -172,11 +174,12 @@ if __name__ == '__main__':
 
         # Step 2 failure 
         except Exception as err:
-            print("> Step 2 failed.")
             error_message = traceback.format_exc()
             log_to_report(file_path=path_report,
                           message=f"\n{report_spacer} \n>  step 2 Failed \n> Error messege:\n> {error_message}",
                           add_timestamp=True)
+
+            raise Exception("> Step 2 Failed.")
 
 
 
@@ -221,11 +224,12 @@ if __name__ == '__main__':
                  
         # Step 3 failure
         except Exception as err:
-            print("> Step 3 failed.")
             error_message = traceback.format_exc()
             log_to_report(file_path=path_report,
                           message=f"\n{report_spacer} \n>  step 3 Failed \n> Error messege:\n> {error_message}\n",
                           add_timestamp=True)
+
+            raise Exception("> Step 3 Failed.")
 
 
     #########################################################################################
@@ -271,7 +275,7 @@ if __name__ == '__main__':
             log_to_report(file_path=path_report,
                           message=f"""{report_spacer} 
                                       \n> Step 4 finished successufly.
-                                      \n> number of neurons files processed: {len(tasks)}. 
+                                      \n> number of neurons files processed: {len(jsons_2process)}. 
                                       \n> Start time: {time4_start} 
                                       \n> End time: {time4_end} 
                                       \n Elpased time: {time4_delta}.\n""",
@@ -279,11 +283,12 @@ if __name__ == '__main__':
 
         # Step 4 failure
         except Exception as err:
-            print("> Step 4 failed.")
             error_message = traceback.format_exc()
             log_to_report(file_path=path_report,
                           message=f"\n{report_spacer} \n>  step 4 Failed \n> Error messege:\n> {error_message}\n",
                           add_timestamp=True)
+
+            raise Exception("> Step 4 Failed.")
 
 
     ############################################################
@@ -317,11 +322,12 @@ if __name__ == '__main__':
 
         # Step 5 failure
         except Exception as err:
-            print("> Step 5 failed.")
             error_message = traceback.format_exc()
             log_to_report(file_path=path_report,
                           message=f"\n{report_spacer} \n>  step 5 Failed \n> Error messege:\n> {error_message}\n",
                           add_timestamp=True)
+
+            raise Exception("> Step 5 Failed.")
 
 
     ##################################################################################
@@ -337,10 +343,11 @@ if __name__ == '__main__':
             print(f"> Assigning clumpiness results into the simplified SWC files. (6/{n_steps})")
 
             # Define paths (from config)
-            path_2process, parquet_path = [os.path.join(*config["results_swc_path"].split(",")), 
-                                        os.path.join(*config["results_labels_path"].split(","))]
+            path_2process, parquet_path = [os.path.join("output", run_name, "simplified_swc"),
+                                           os.path.join("output", run_name, "output_clumpiness", "unified_clumpiness.parquet")]
 
-            save_path = os.path.join("data", "output_results", Path(path_2process).name)
+
+            save_path = os.path.join("output", run_name, "output_results", Path(path_2process).name)
 
             # Ensure the output directory exists before spawning workers.
             if not os.path.exists(save_path):
@@ -383,11 +390,13 @@ if __name__ == '__main__':
                           message=f"\n{report_spacer} \n>  step 6 Failed \n> Error messege:\n> {error_message}\n",
                           add_timestamp=True)
 
+            raise Exception("> Step 6 Failed.")
 
-        print(report_spacer)
-        log_to_report(file_path=path_report,
-                    message=f"""{report_spacer} 
-                                \n> Pipeline finished.
-                                \n> Start time: {time1_start} 
-                                \n> End time: {time6_end}""",
-                    add_timestamp=True)
+
+    print(report_spacer)
+    log_to_report(file_path=path_report,
+                message=f"""{report_spacer} 
+                            \n> Pipeline finished.
+                            \n> Start time: {time1_start} 
+                            \n> End time: {time6_end}""",
+                add_timestamp=True)

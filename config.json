@@ -2,7 +2,7 @@
     "run_name":"swc_analysis_test",
     "swc_path": "data,input_swc,sk_lod1_783_healed",
     "labels_path": "data,input_labels,processed_swc_data_princeton",
-    "results_swc_path":"data,input_swc,simplified",
+    "results_swc_path":"output,input_swc,simplified",
     "results_labels_path":"data,unified_clumpiness.parquet",
     "overwrite_info": "False",
     "data_limit":"None",

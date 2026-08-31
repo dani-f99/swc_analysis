@@ -151,6 +151,8 @@ def process_single_clumpiness(filepath: str,
             # If it fails, delete the empty/partial CSV so it doesn't leave corrupted data
             if output_csv.exists():
                 output_csv.unlink()
+
+            raise Exception("> Failed to process clumpiness")
             return False
 
 
