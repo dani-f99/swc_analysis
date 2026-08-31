@@ -144,13 +144,15 @@ class TimeStamp():
 ############################################################################
 def log_to_report(file_path: str, 
                   message: str, 
-                  add_timestamp: bool = False):
+                  add_timestamp: bool = False,
+                  mode: str = "a"):
 
     """
     Custom function that generate report
     file_path: str -> Path to which the report will be saved, will contain the file name.
     msg: str -> messege to appaend to the report.
-    add_timesmp -> add timestamp to the start of the report.
+    add_timesmp: bool -> add timestamp to the start of the report.
+    mode:str -> "a" for appending mode and "w" for writing (overwriting) mode.
     """
     path = Path(file_path)
     
@@ -167,7 +169,7 @@ def log_to_report(file_path: str,
         
     # 2. 'a' (append) mode automatically creates the file if missing, 
     # or appends to the end if it already exists.
-    with open(path, "a", encoding="utf-8") as file:
+    with open(path, mode, encoding="utf-8") as file:
         file.write(log_entry)
 
 

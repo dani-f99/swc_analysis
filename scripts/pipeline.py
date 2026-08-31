@@ -8,12 +8,25 @@ import polars as pl
 import os
 
 
-def process_neuron(neuron_itr):
+def process_neuron(neuron_itr: str,
+                   labels_parquet_path: str,
+                   swc_neurons_path: str,
+                   swc_simp_path: str,
+                   json_path: str
+                   ):
+    """
+    Processing pipeline of SWC files.
+    neuron_itr:str -> neuron id to process.
+    labels_parquet_path:str -> path to the processed labels parquet file (output).
+    swc_neurons_path:str -> path to the neurons swc files folder (input).
+    swc_simp_path:str -> path to the simplified swc file folders (output).
+    json_path:str -> path to the JSON output folder(output).
+    """
     try:
         #########################
         #  1. Load labels parquet
         # Parquet labels path
-        prquet_labels_path = os.path.join("data", "input_labels", "swc_labels.parquet")
+        prquet_labels_path = os.path.join(labels_parquet_path)
 
 
         # Load exactly the labels of the example swc file
@@ -26,7 +39,7 @@ def process_neuron(neuron_itr):
 
         #########################
         #  2. Import the swc file
-        neuron_path = os.path.join("data","input_swc", "sk_lod1_783_healed", f"{neuron_itr}.swc")
+        neuron_path = os.path.join(swc_neurons_path, f"{neuron_itr}.swc")
         neuron_swc = pd.read_csv(neuron_path, 
                                     comment='#', 
                                     header=None, 
@@ -36,7 +49,10 @@ def process_neuron(neuron_itr):
 
         #######################
         #  3. simplify swc file
-        simple_swc = simplify_swc_topology(neuron_swc, swc_name=f"{neuron_itr}", save_csv=False)  
+        simple_swc = simplify_swc_topology(swc_input=neuron_swc, 
+                                           swc_name=f"{neuron_itr}",
+                                           output_path=swc_simp_path,
+                                           save_csv=False)  
 
 
         #########################################
@@ -50,11 +66,7 @@ def process_neuron(neuron_itr):
 
         ##########################
         #  5. save simplified file
-        for i in ["data", os.path.join("data", "input_swc"), os.path.join("data", "input_swc", "simplified")]:
-            if os.path.exists(i) is False:
-                os.mkdir(i)
-
-        save_path = os.path.join("data", "input_swc", "simplified", f"{neuron_itr}.csv")
+        save_path = os.path.join(swc_simp_path, f"{neuron_itr}.csv")
         swc_labeled["type"] = swc_labeled.groupby("node_id")["type"].unique().apply(lambda X : X[0] if len(X) <= 1 else ",".join(X)) # joining labels if more then 2 per node
         swc_labeled = swc_labeled.drop_duplicates(subset=["node_id", "parent"], keep="first")                                        # dropping rows with the same parent+node_id
 
@@ -71,16 +83,16 @@ def process_neuron(neuron_itr):
         swc2json(swc_dataset=swc_labeled.drop_duplicates(),
                     neuron_id=neuron_itr,
                     save_json=True,
-                    save_path=os.path.join("data", "output_json"),
+                    save_path=os.path.join(json_path),
                     overwrite=overwrite_par)
 
 
         ##################################################################
         # 7. Devide main tree to multiple sub-trees for each internal node
         # Example Usage:
-        generate_internal_subtrees(input_json_path = os.path.join("data","output_json",f"{neuron_itr}_0.json"), 
+        generate_internal_subtrees(input_json_path = os.path.join(json_path, f"{neuron_itr}_0.json"), 
                                     neuron_number = neuron_itr, 
-                                    output_dir = os.path.join("data", "output_json"),
+                                    output_dir = os.path.join(json_path),
                                     overwrite=overwrite_par)
         
 

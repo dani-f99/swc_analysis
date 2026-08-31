@@ -10,7 +10,8 @@ import os
 
 ############################################################################
 ############################################################################
-def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
+def get_neurons_info(parquet_path : str ,
+                     labels_path: str,
                      swc_labels_filter : str = (True, ("super_class",["central", "optic", "visual_centrifugal", "visual_projection"])),
                      swc_labels_file : str = "neuron_data_full_article_princeton.ftr",
                      nodes_labels_folder : str = "processed_swc_data_princeton",
@@ -18,7 +19,8 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
                      overwrite_parquet : bool = True
                     ) -> pd.DataFrame:
     """
-    main_path : str -> path to the folder which contains all the labels required files.
+    parquet_path_path : str -> path to the folder which contains the parquet file (saved to).
+    labels_path: str -> path to the labels folder.
     swc_labels_filter : str -> if [0] is True filter out unwanted swc file on the base of their super_class label [1][0] and their super type labels rquired [1][1] of the touple.
     swc_labels_file : str -> name of the neurons swc labels file.
     nodes_labels_folder : str -> name of the folders containing the nodes labels data.
@@ -26,7 +28,7 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
     overwrite_parquet : bool -> If true will overwrite the labels+metadata parquet file (defualt is True).
     """
 
-    parquet_path = os.path.join(main_path, "swc_labels.parquet")
+    parquet_path = os.path.join(parquet_path, "swc_labels.parquet")
     if (overwrite_parquet is False) and os.path.exists(parquet_path):
         print("> Function execution halted, old `swc_labels.parquet` file preserved.")
         return
@@ -44,7 +46,7 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
             filter_on = swc_labels_filter[1][0]
             filter_by = swc_labels_filter[1][1]
 
-            swc_labels = pd.read_feather(os.path.join(main_path, swc_labels_file))
+            swc_labels = pd.read_feather(os.path.join(labels_path, swc_labels_file))
             swc_labels = swc_labels.loc[swc_labels[filter_on].isin(filter_by), ["neuron", filter_on]].drop_duplicates()
             swc_labels.neuron = swc_labels.neuron.astype("str")
 
@@ -55,7 +57,7 @@ def get_neurons_info(main_path : str = os.path.join("data", "input_labels"),
     # 2. Loading the nodes labels files, cheecking for required neurons and saving the data to parquet (concat) with each itiration for storage efficincy.
     # Mapping the folders
     
-    nodes_labels_path = os.path.join(main_path, nodes_labels_folder)
+    nodes_labels_path = os.path.join(labels_path, nodes_labels_folder)
     folders = os.listdir(nodes_labels_path)
 
 
