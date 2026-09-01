@@ -17,7 +17,7 @@ import os
 
 
 # Debugging configuration 
-debug = True
+debug = False
 n_steps = 6
 report_spacer = "-----------------------------------------------------------------"
 
@@ -302,7 +302,7 @@ if __name__ == '__main__':
 
             print(report_spacer)
             input_dir = path_clumpiness
-            output_file = os.path.join("output", run_name, "unified_clumpiness.parquet")
+            output_file = os.path.join("output", run_name, "output_clumpiness", "_unified_clumpiness.parquet")
             print(f"> Joining clumpiness data to unified file at {output_file}. (5/{n_steps})")
 
             Path(output_file).parent.mkdir(parents=True, exist_ok=True)
@@ -344,7 +344,7 @@ if __name__ == '__main__':
 
             # Define paths (from config)
             path_2process, parquet_path = [os.path.join("output", run_name, "simplified_swc"),
-                                           os.path.join("output", run_name, "output_clumpiness", "unified_clumpiness.parquet")]
+                                           os.path.join("output", run_name, "output_clumpiness", "_unified_clumpiness.parquet")]
 
 
             save_path = os.path.join("output", run_name, "output_results", Path(path_2process).name)
@@ -394,9 +394,14 @@ if __name__ == '__main__':
 
 
     print(report_spacer)
+    delta_raw = int((time6.end_obj - time1.start_obj).total_seconds())
+    hours, remainder_seconds = divmod(delta_raw, 3600)
+    minutes, _ = divmod(remainder_seconds, 60)
+
     log_to_report(file_path=path_report,
                 message=f"""{report_spacer} 
                             \n> Pipeline finished.
                             \n> Start time: {time1_start} 
-                            \n> End time: {time6_end}""",
+                            \n> End time: {time6_end}
+                            \n> elapsed time: {hours}h:{minutes:02d}m""",
                 add_timestamp=True)
