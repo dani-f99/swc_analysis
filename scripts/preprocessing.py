@@ -1,5 +1,4 @@
 #################################
-from scripts.helpers import mkdir
 from tqdm import tqdm
 import pandas as pd
 import json

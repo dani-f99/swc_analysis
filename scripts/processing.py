@@ -19,8 +19,9 @@ import os
 ####################################################
 def generate_internal_subtrees(input_json_path: str, 
                                neuron_number: str,
+                               output_dir: str,
                                overwrite: bool = False, 
-                               output_dir: str = os.path.join("data", "output_json")) -> None:
+                               ) -> None:
     """
     Parses a nested JSON tree of a neuron and exports all internal sub-trees 
     (excluding the main root and leaves) into individual JSON files.
@@ -153,7 +154,6 @@ def process_single_clumpiness(filepath: str,
                 output_csv.unlink()
 
             raise Exception("> Failed to process clumpiness")
-            return False
 
 
 ##############################################

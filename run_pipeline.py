@@ -25,7 +25,7 @@ if debug:
     steps_bool = [True,  # Step 1 [V]
                   True,  # Step 2 [V]
                   True,  # Step 3 [V]
-                  True, # Step 4 [ ]
+                  True,  # Step 4 [ ]
                   True, # Step 5 [ ]
                   True, # Step 6 [ ]
                  ]
