@@ -21,7 +21,7 @@ Please ensure the following modules are installed:
 - tqdm
 
 ### Required Program:
-- (find-clumpiness)[https://github.com/GregorySchwartz/find-clumpiness]
+- [find-clumpiness](https://github.com/GregorySchwartz/find-clumpiness)
 
 
 ## 3. CONFIGURATION (config.json)
@@ -39,7 +39,7 @@ Before running the analysis, configure the `config.json` file as follows:
 
 ## 4. USAGE GUIDE
 1. Configure the `config.json` file as needed (see section above). 
-2. Install (find-clumpiness)[https://github.com/GregorySchwartz/find-clumpiness] and make sure it exsists on your system (try find-clumpiness --help).
+2. Install [find-clumpiness](https://github.com/GregorySchwartz/find-clumpiness) and make sure it exsists on your system (try find-clumpiness --help).
 2. Run the pipeline script `run_pipeline.py`, preferably on a unix server capable of handling high-throughput parallel task processing. 
 3. Review the `output/results_output` directory for the extracted non-leaf internal node sub-trees and ZSTD-compressed metrics files.
 
@@ -50,5 +50,5 @@ The program uses the following folder structure:
 - output/ : Result output, tables to be used in downstream analysis. 
 
 ## 6. RESOURCES
-- find clumpiness - (https://github.com/GregorySchwartz/find-clumpiness)[https://github.com/GregorySchwartz/find-clumpiness]
-- fly brainscan (swc files) - (https://codex.flywire.ai/api/download?dataset=fafb)[https://codex.flywire.ai/api/download?dataset=fafb]
+- find clumpiness - [https://github.com/GregorySchwartz/find-clumpiness](https://github.com/GregorySchwartz/find-clumpiness)
+- fly brainscan (swc files) - [https://codex.flywire.ai/api/download?dataset=fafb](https://codex.flywire.ai/api/download?dataset=fafb)
