@@ -175,7 +175,7 @@ def swc2json(swc_dataset,
     output_folder: str -> Folder to which save the processed json file.
     print_msg : bool = False -> if True will print messege about the processed neuron.
     """
-    output_file = os.path.join(save_path, f"{neuron_id}_0.json")
+    output_file = os.path.join(save_path, f"{neuron_id}.json")
 
     if (overwrite is False) and (os.path.exists(output_file)):
         return

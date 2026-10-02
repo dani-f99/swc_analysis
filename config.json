@@ -1,7 +1,8 @@
 {
-    "run_name":"swc_analysis_test",
+    "run_name":"test_pipeline",
     "swc_path": "data,input_swc,sk_lod1_783_healed",
     "labels_path": "data,input_labels,processed_swc_data_princeton",
+    "labels_ftr_path":"data,input_labels,neuron_data_full_article_princeton.ftr",
     "results_swc_path":"output,output_swc,simplified",
     "results_labels_path":"data,unified_clumpiness.parquet",
     "overwrite_info": "False",
