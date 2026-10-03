@@ -1,8 +1,8 @@
 # Fixed copy of the `ProcessSWC` class from `notebook_test.ipynb` - see `BUGFIX_REPORT_claude.md` for the full change log.
 # Import - Custom scripts
 from scripts.helpers import read_json
-from scripts.preprocessing_claude import get_neurons_info, simplify_swc_topology, swc2json, attach_node_labels
-from scripts.processing_claude import generate_internal_subtrees
+from scripts.preprocessing_cld import get_neurons_info, simplify_swc_topology, swc2json, attach_node_labels
+from scripts.processing_cld import generate_internal_subtrees
 
 # Imports - python
 from pathlib import Path
