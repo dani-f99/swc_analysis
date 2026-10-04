@@ -67,12 +67,12 @@ The steps are methods of the `ProcessSWC` class (`scripts/process_swc.py`). Step
 3. Run the pipeline, preferably on a unix server capable of handling parallel task processing:
 
 ```
-python run_test.py                  # first 10 neurons, steps 1-9
-python run_test.py -n 0             # all neurons
-python run_test.py -n 50 --selection random --n-jobs 4 --overwrite true
-python run_test.py --last-step 5    # stop before the clumpiness calculation
-python run_test.py --neuron-ids 720575940596125868 720575940597856265
-python run_test.py --help           # all options
+python main.py                   # first 10 neurons, steps 1-9
+python main.py  -n 0             # all neurons
+python main.py  -n 50 --selection random --n-jobs 4 --overwrite true
+python main.py  --last-step 5    # stop before the clumpiness calculation
+python maint.py --neuron-ids 720575940596125868 720575940597856265
+python main.py  --help           # all options
 ```
 
    Every step prints a message when it starts and shows a progress bar, e.g. `> Step 6 - clumpiness scores (10 neurons)`.
