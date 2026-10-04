@@ -75,6 +75,7 @@ python run_test.py --neuron-ids 720575940596125868 720575940597856265
 python run_test.py --help           # all options
 ```
 
+   Every step prints a message when it starts and shows a progress bar, e.g. `> Step 6 - clumpiness scores (10 neurons)`.
    The script can be started from any folder. Its exit code is `0` when every neuron and every step passed, `1` when something failed and `2` when nothing was run (e.g. find-clumpiness is missing).
 
 4. Open the report of the run: `output/<run_name>/0-run_log/test_report_<date>_<time>.html` (see section 6).

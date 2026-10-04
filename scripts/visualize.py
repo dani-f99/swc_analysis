@@ -7,8 +7,9 @@ from typing import Union
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from joblib import Parallel, delayed
-from tqdm import tqdm
+from joblib import delayed
+
+from scripts.helpers import run_parallel
 
 
 SWC_COLUMNS = ["node_id", "swc_type", "x", "y", "z", "r", "parent"]
@@ -356,10 +357,9 @@ def plot_scored_neurons(scored_dir: str,
                          for tree in trees if os.path.isdir(os.path.join(scored_dir, tree))
                          for f in os.listdir(os.path.join(scored_dir, tree)) if f.endswith(".csv")})
 
-    results = Parallel(n_jobs=n_jobs, backend="loky")(
-        delayed(_plot_worker)(neuron_id, scored_dir, labels_dir, output_dir, trees, overwrite, include_plotlyjs)
-        for neuron_id in tqdm(neuron_ids, desc="Plotting neurons", unit=" neurons")
-    )
+    tasks = (delayed(_plot_worker)(neuron_id, scored_dir, labels_dir, output_dir, trees, overwrite, include_plotlyjs)
+             for neuron_id in neuron_ids)
+    results = run_parallel(tasks, total=len(neuron_ids), n_jobs=n_jobs, desc="Plotting neurons", unit=" neurons")
 
     failed = {neuron_id: error for neuron_id, _, error in results if error is not None}
     if failed:

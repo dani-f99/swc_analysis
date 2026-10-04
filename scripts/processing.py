@@ -1,7 +1,7 @@
 #########
 # Fixed version of the original `_archive/scripts/processing.py` - see `_archive/BUGFIX_REPORT.md` for the full change log.
 # Imports
-from scripts.helpers import  chunked_iterable
+from scripts.helpers import chunked_iterable, run_parallel
 
 from joblib import Parallel, delayed
 import pyarrow.parquet as pq
@@ -346,9 +346,8 @@ def compile_wide_clumpiness(input_directory: str,
     """
     neuron_dirs = sorted(entry.path for entry in os.scandir(input_directory) if entry.is_dir())
 
-    results = Parallel(n_jobs=n_jobs, backend="loky")(
-        delayed(read_neuron_clumpiness)(d) for d in tqdm(neuron_dirs, desc="Unifying clumpiness", unit=" neurons")
-    )
+    results = run_parallel((delayed(read_neuron_clumpiness)(d) for d in neuron_dirs),
+                           total=len(neuron_dirs), n_jobs=n_jobs, desc="Unifying clumpiness", unit=" neurons")
 
     frames, failed_files = [], []
     for rows, errors in results:
@@ -551,16 +550,15 @@ def assign_unified_clumpiness(unified_filepath: str,
     """
     unified = pd.read_csv(unified_filepath, dtype={"neuron_id": str})
 
-    results = Parallel(n_jobs=n_jobs, backend="loky")(
-        delayed(_assign_worker)(neuron_id,
-                                scores = scores.drop(columns="neuron_id"),
-                                simplified_path = os.path.join(simplified_dir, f"{neuron_id}.csv"),
-                                raw_path = os.path.join(raw_dir, f"{neuron_id}.swc"),
-                                output_dir = output_dir,
-                                trees = trees,
-                                overwrite = overwrite)
-        for neuron_id, scores in tqdm(unified.groupby("neuron_id", sort=True), desc="Assigning clumpiness", unit=" neurons")
-    )
+    tasks = (delayed(_assign_worker)(neuron_id,
+                                     scores = scores.drop(columns="neuron_id"),
+                                     simplified_path = os.path.join(simplified_dir, f"{neuron_id}.csv"),
+                                     raw_path = os.path.join(raw_dir, f"{neuron_id}.swc"),
+                                     output_dir = output_dir,
+                                     trees = trees,
+                                     overwrite = overwrite)
+             for neuron_id, scores in unified.groupby("neuron_id", sort=True))
+    results = run_parallel(tasks, total=unified["neuron_id"].nunique(), n_jobs=n_jobs, desc="Assigning clumpiness", unit=" neurons")
 
     written = [stats for _, stats, _ in results if stats is not None]
     failed = {neuron_id: error for neuron_id, _, error in results if error is not None}

@@ -13,7 +13,8 @@ import pandas as pd
 
 ######################
 ### Labels         ###
-STEP_LABELS = {"step02": "Step 2 - simplify SWC",
+STEP_LABELS = {"step01": "Step 1 - labels file",
+               "step02": "Step 2 - simplify SWC",
                "step03": "Step 3 - join labels",
                "step04": "Step 4 - create JSON",
                "step05": "Step 5 - divide sub-trees",
@@ -212,13 +213,15 @@ def stats_summary(stats: dict) -> str:
 
 ######################
 ### Run-level steps ###
-def time_run_steps(steps: list) -> list:
+def time_run_steps(steps: list,
+                   verbose: bool = True) -> list:
     """
     Runs the steps that work on the whole run (7-9) one after the other and records each of them for the report.
     A step that raises stops the chain - the later steps depend on it and are recorded as "not run".
 
     steps: list -> (step name, function without arguments, output path) tuples,
                    e.g. ("step08", test.step08_score_assignment, test.dict_paths["8-swc_clumpiness"]).
+    verbose: bool -> prints a message when a step starts and its result when it ends.
     Returns one record per step: step, status ("ok" | "issues" | "failed" | "not run"), seconds, stats, output, error, traceback.
     "issues" -> the step finished, but its stats list failed neurons / files.
     """
@@ -227,6 +230,8 @@ def time_run_steps(steps: list) -> list:
         record = {"step": step_name, "status": "not run", "seconds": None, "stats": None, "output": output, "error": None, "traceback": None}
 
         if not stopped:
+            if verbose:
+                print(f"\n> {STEP_LABELS.get(step_name, step_name)}", flush=True)
             t0 = time.time()
             try:
                 record["stats"] = step_fn()
@@ -236,6 +241,10 @@ def time_run_steps(steps: list) -> list:
                 record.update(status="failed", error=f"{type(err).__name__}: {err}", traceback=traceback.format_exc())
                 stopped = True
             record["seconds"] = round(time.time() - t0, 2)
+            if verbose:
+                print(f"  {record['status']} in {record['seconds']} s | {record['error'] or stats_summary(record['stats'])}", flush=True)
+                if record["traceback"]:
+                    print(record["traceback"], flush=True)
 
         records.append(record)
 

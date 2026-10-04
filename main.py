@@ -1,5 +1,6 @@
 # Test run of the pipeline from the command line (server use) - same run and checks as the test cell of `dev_notebook.ipynb`.
-# Processes a selection of neurons step by step, records failures, validates each step's output and writes
+# Processes a selection of neurons step by step (every step prints a start message and a progress bar), records failures,
+# validates each step's output and writes
 # an html report + a csv of the results to `output/<run_name>/0-run_log`.
 #
 #   python run_test.py                      -> first 10 neurons, steps 1-9, overwrite and n_jobs from the config
@@ -27,11 +28,11 @@ sys.path.insert(0, REPO_DIR)
 
 import pandas as pd
 import polars as pl
-from joblib import Parallel, delayed
-from tqdm import tqdm
+from joblib import delayed
 
 from scripts.process_swc import ProcessSWC
-from scripts.report import write_test_report, time_run_steps, stats_summary
+from scripts.helpers import run_parallel
+from scripts.report import write_test_report, time_run_steps, STEP_LABELS
 
 
 ######################
@@ -92,40 +93,34 @@ def check_neuron(test: ProcessSWC,
 
 
 ######################
-### Single neuron  ###
-def run_neuron(test: ProcessSWC,
-               neuron_id: str,
-               last_step: int = 6,
-               run_checks: bool = True) -> tuple:
-    """
-    Runs steps 2-`last_step` on one neuron, then the checks. Never raises - failures are recorded.
-    Returns (record dict, traceback string | None).
-    """
-    steps = [("step02", test.step02_simplify_swc),
-             ("step03", test.step03_label_joining),
-             ("step04", test.step04_json_creation),
-             ("step05", test.step05_internal_node_div),
-             ("step06", test.step06_clumpiness_calculation)][:last_step - 1]
+### Single steps   ###
+STEP_METHODS = {"step02": "step02_simplify_swc",
+                "step03": "step03_label_joining",
+                "step04": "step04_json_creation",
+                "step05": "step05_internal_node_div",
+                "step06": "step06_clumpiness_calculation"}
 
-    record = {"neuron": neuron_id, "status": "ok", "failed_step": None, "error": None}
 
-    for step_name, step_fn in steps:
-        t0 = time.time()
-        try:
-            step_fn(neuron_id)
-        except Exception as err:
-            record.update(status="failed", failed_step=step_name, error=f"{type(err).__name__}: {err}")
-            return record, traceback.format_exc()
-        record[f"{step_name}_sec"] = round(time.time() - t0, 2)
+def run_step(test: ProcessSWC,
+             step_name: str,
+             neuron_id: str) -> tuple:
+    """Runs one per-neuron step on one neuron. Never raises - returns (seconds | None, error | None, traceback | None)."""
+    t0 = time.time()
+    try:
+        getattr(test, STEP_METHODS[step_name])(neuron_id)
+    except Exception as err:
+        return None, f"{type(err).__name__}: {err}", traceback.format_exc()
+    return round(time.time() - t0, 2), None, None
 
-    if run_checks:
-        try:
-            record.update(check_neuron(test, neuron_id, last_step))
-        except Exception as err:
-            record.update(status="check_error", error=f"{type(err).__name__}: {err}")
-            return record, traceback.format_exc()
 
-    return record, None
+def run_check(test: ProcessSWC,
+              neuron_id: str,
+              last_step: int = 6) -> tuple:
+    """Checks the outputs of one neuron. Never raises - returns (checks | None, error | None, traceback | None)."""
+    try:
+        return check_neuron(test, neuron_id, last_step), None, None
+    except Exception as err:
+        return None, f"{type(err).__name__}: {err}", traceback.format_exc()
 
 
 ######################
@@ -153,6 +148,7 @@ def main():
     test = ProcessSWC(config_file=args.config)
 
     # Step 1 - labels parquet (needed by every neuron) -> returns the neurons with a raw SWC file AND labels
+    print(f"> {STEP_LABELS['step01']}", flush=True)
     candidates = test.step01_create_labels()
 
     # Steps 2+ overwrite override (after step 1, so the labels parquet is not rebuilt)
@@ -181,18 +177,39 @@ def main():
     print(f"> {len(candidates)} neurons with labels, testing {len(selected)} "
           f"(steps 2-{args.last_step}, overwrite={test.dict_config['overwrite_info']}, n_jobs={n_jobs}).")
 
+    records = {neuron_id: {"neuron": neuron_id, "status": "ok", "failed_step": None, "error": None} for neuron_id in selected}
+    tracebacks = {}
     t0 = time.time()
-    if n_jobs == 1:
-        results = [run_neuron(test, i, args.last_step, run_checks) for i in tqdm(selected, desc="Testing neurons")]
-    else:
-        # Progress bar follows the dispatched neurons (slightly ahead of the finished ones)
-        results = Parallel(n_jobs=n_jobs, backend="loky")(
-            delayed(run_neuron)(test, i, args.last_step, run_checks) for i in tqdm(selected, desc="Testing neurons")
-        )
-    wall_sec = time.time() - t0
 
-    df_test = pd.DataFrame([record for record, _ in results])
-    tracebacks = {record["neuron"]: trace for record, trace in results if trace is not None}
+    # Steps 2-6 - one step at a time over all neurons, so every step announces itself and has its own progress bar.
+    # A neuron that failed a step is left out of the next steps.
+    for step_name in list(STEP_METHODS)[:args.last_step - 1]:
+        active = [neuron_id for neuron_id in selected if records[neuron_id]["status"] == "ok"]
+        print(f"\n> {STEP_LABELS[step_name]} ({len(active)} neurons)", flush=True)
+        results = run_parallel((delayed(run_step)(test, step_name, neuron_id) for neuron_id in active),
+                               total=len(active), n_jobs=n_jobs, desc=STEP_LABELS[step_name].split(" - ")[0], unit=" neurons")
+        for neuron_id, (seconds, error, trace) in zip(active, results):
+            if error is None:
+                records[neuron_id][f"{step_name}_sec"] = seconds
+            else:
+                records[neuron_id].update(status="failed", failed_step=step_name, error=error)
+                tracebacks[neuron_id] = trace
+
+    if run_checks:
+        active = [neuron_id for neuron_id in selected if records[neuron_id]["status"] == "ok"]
+        print(f"\n> Checks - validating the output files ({len(active)} neurons)", flush=True)
+        results = run_parallel((delayed(run_check)(test, neuron_id, args.last_step) for neuron_id in active),
+                               total=len(active), n_jobs=n_jobs, desc="Checks", unit=" neurons")
+        for neuron_id, (checks, error, trace) in zip(active, results):
+            if error is None:
+                records[neuron_id].update(checks)
+            else:
+                records[neuron_id].update(status="check_error", error=error)
+                tracebacks[neuron_id] = trace
+
+    wall_sec = time.time() - t0
+    df_test = pd.DataFrame(list(records.values()))
+    print()
 
 
     ######################
@@ -216,12 +233,6 @@ def main():
                    ("step08", test.step08_score_assignment, test.dict_paths["8-swc_clumpiness"]),
                    ("step09", test.step09_plot_creation, test.dict_paths["9-swc_clumpiness_plots"])]
     run_steps = time_run_steps(final_steps[:max(args.last_step - 6, 0)])
-    if run_steps:
-        print()
-    for record in run_steps:
-        print(f"> {record['step']}: {record['status']} | {record['error'] or stats_summary(record['stats'])}")
-        if record["traceback"]:
-            print(record["traceback"])
 
     # Report + results table
     selection = "explicit ids" if args.neuron_ids else "all" if args.n_neurons <= 0 else args.selection
