@@ -1,5 +1,7 @@
 from datetime import datetime
 from pathlib import Path
+from joblib import Parallel
+from tqdm import tqdm
 import itertools
 import unittest
 import json
@@ -246,4 +248,27 @@ def run_pipeline(test_pipeline,
             print(f"Final Status: FAILED X ({len(result.failures) + len(result.errors)} issues found)")
 
 
+####################################################
+####################################################
+def run_parallel(tasks,
+                 total: int,
+                 n_jobs: int = 1,
+                 desc: str = "",
+                 unit: str = "it") -> list:
+    """
+    Runs joblib tasks with a progress bar that follows the FINISHED tasks, so a long step shows that it is alive.
 
+    tasks -> iterable of `delayed(function)(arguments)`.
+    total: int -> number of tasks, for the progress bar.
+    n_jobs: int -> number of tasks processed in parallel.
+    desc: str -> text in front of the progress bar.
+    unit: str -> unit of the progress bar.
+    Returns the results in the order of the tasks.
+    """
+    try:
+        parallel = Parallel(n_jobs=n_jobs, backend="loky", return_as="generator")
+    except TypeError:
+        # joblib < 1.3 has no `return_as` -> the bar follows the dispatched tasks instead
+        return Parallel(n_jobs=n_jobs, backend="loky")(tqdm(tasks, total=total, desc=desc, unit=unit))
+
+    return list(tqdm(parallel(tasks), total=total, desc=desc, unit=unit))
