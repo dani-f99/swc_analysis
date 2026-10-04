@@ -1,5 +1,5 @@
 #################################
-# Fixed copy of `scripts/preprocessing.py` - see `BUGFIX_REPORT_claude.md` for the full change log.
+# Fixed version of the original `_archive/scripts/preprocessing.py` - see `_archive/BUGFIX_REPORT.md` for the full change log.
 from tqdm import tqdm
 import pandas as pd
 import json

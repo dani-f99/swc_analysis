@@ -1,8 +1,9 @@
-# Fixed copy of the `ProcessSWC` class from `notebook_test.ipynb` - see `BUGFIX_REPORT_claude.md` for the full change log.
+# Fixed copy of the `ProcessSWC` class from `notebook_test.ipynb` - see `_archive/BUGFIX_REPORT.md` for the full change log.
 # Import - Custom scripts
 from scripts.helpers import read_json
-from scripts.preprocessing_cld import get_neurons_info, simplify_swc_topology, swc2json, attach_node_labels
-from scripts.processing_cld import generate_internal_subtrees
+from scripts.visualize import plot_scored_neurons
+from scripts.preprocessing import get_neurons_info, simplify_swc_topology, swc2json, attach_node_labels
+from scripts.processing import generate_internal_subtrees, process_single_clumpiness, compile_wide_clumpiness, assign_unified_clumpiness
 
 # Imports - python
 from pathlib import Path
@@ -38,9 +39,11 @@ class ProcessSWC():
     Step 4 - Covnerting simplified SWC file + labels to JSON format for the clumpiness calculation.
     Step 5 - Dividing each json to multiple sub-jsons (sub-trees) of each internal node.
     Step 6 - Clumpiness calculation via the find-clumpiness program.
-    Step 7 - Assigning clumpiness scores to the internal nodes of the SWC tree (simplified / non-simplified tree - based on node id).
+    Step 7 - Joining the clumpiness results of all neurons into a single unified file (one row per node, one column per label combination).
+    Step 8 - Assigning the clumpiness scores to the root and the internal nodes of each neuron's SWC file (simplified / raw - based on node id).
+    Step 9 - Saving the interactive topology plot of each neuron as an html file (simplified / raw).
 
-    Overwrite rule (same for every step): if `overwrite_info` is False and the step's output exists, the step is
+    Overwrite rule (same for every per-neuron step): if `overwrite_info` is False and the step's output exists, the step is
     skipped and returns {"skipped": True}. Otherwise the output is (re)written.
     Every per-neuron step returns a small dict of statistics, to be collected into a per-neuron record.
     """
@@ -84,7 +87,9 @@ class ProcessSWC():
                            "4-json": str(run_dir / "4-json"),
                            "5_json_divided": str(run_dir / "5_json_divided"),
                            "6-clumpiness_scores": str(run_dir / "6-clumpiness_scores"),
-                           "7-swc_clumpiness_result": str(run_dir / "7-swc_clumpiness_result")
+                           "7-swc_clumpiness_result": str(run_dir / "7-swc_clumpiness_result"),
+                           "8-swc_clumpiness": str(run_dir / "8-swc_clumpiness"),
+                           "9-swc_clumpiness_plots": str(run_dir / "9-swc_clumpiness_plots")
                             }
 
         # Labels parquet path - defined here so workers never depend on `step01` having run in the same process
@@ -263,17 +268,105 @@ class ProcessSWC():
     ########################################
     ################ STEP 6 ################
     ########################################
-    def step06_clumpiness_calculation(self):
+    def step06_clumpiness_calculation(self,
+                                       neuron_id: str | int) -> dict:
         """
+        6th step, calculating the clumpiness for each json file - the main tree and every sub-tree of step 5.
+        Output: `6-clumpiness_scores/<neuron_id>/<json file name>.csv` (`<neuron_id>.csv` is the main tree).
+        neuron_id: str | int -> neuron id number of the file in the `swc_input` folder.
         """
-        pass
+
+        neuron_id = str(neuron_id)
+
+        # Required paths - main tree first, then its sub-trees
+        path_main = os.path.join(self.dict_paths["4-json"], f"{neuron_id}.json")
+        path_div = os.path.join(self.dict_paths["5_json_divided"], neuron_id)
+        paths2process = [path_main] + sorted(os.path.join(path_div, i) for i in os.listdir(path_div) if i.endswith(".json"))
+        output_path = os.path.join(self.dict_paths["6-clumpiness_scores"], neuron_id)
+        os.makedirs(output_path, exist_ok=True)
+
+        # Scores of trees that no longer exist (older tree version) are removed, same as the sub-trees in step 5
+        tree_names = {Path(i).stem for i in paths2process}
+        for stale_file in Path(output_path).glob("*.csv"):
+            if stale_file.stem not in tree_names:
+                stale_file.unlink()
+
+        # Clumpiness calculation - an existing csv is kept when overwrite is False
+        n_written = 0
+        for i in paths2process:
+            written = process_single_clumpiness(filepath = i,
+                                                output_dir = output_path,
+                                                overwrite = self.dict_config["overwrite_info"])
+            n_written += int(written is True)
+
+        if n_written == 0:
+            return {"skipped": True}
+
+        return {"n_trees": len(paths2process),
+                "n_clumpiness_written": n_written}
 
 
 
     ##################################
     ############# STEP 7 #############
     ##################################
-    def step07_result_annealing(self):
+    def step07_result_annealing(self) -> dict:
         """
+        7th step, joining the clumpiness results of every neuron (step 6) into a single unified file.
+        Output: `7-swc_clumpiness_result/unified_clumpiness.csv` - one row per tree with neuron_id,
+        node_id (0 = root / main tree) and one `<label1>_<label2>` column per label combination (null if not found).
+        Not a per-neuron step, and always rebuilt - it is an aggregate of whatever step 6 has produced so far.
         """
-        pass
+
+        save_path = os.path.join(self.dict_paths["7-swc_clumpiness_result"], "unified_clumpiness.csv")
+
+        return compile_wide_clumpiness(input_directory = self.dict_paths["6-clumpiness_scores"],
+                                       output_filepath = save_path,
+                                       n_jobs = self.dict_config["n_jobs"])
+
+
+
+    ########################################
+    ################ STEP 8 ################
+    ########################################
+    def step08_score_assignment(self,
+                                trees: tuple = ("simplified", "raw")) -> dict:
+        """
+        8th step, assigning the clumpiness scores of the unified file (step 7) to the root and the internal nodes
+        of each neuron's SWC file - every other node stays null. The join is based on the node id.
+        Output: `8-swc_clumpiness/<simplified | raw>/<neuron_id>.csv` - the SWC nodes + one column per label combination.
+        Not a per-neuron step - it runs on every neuron of the unified file.
+        trees: tuple -> which trees to write: "simplified" (step 3 file, with the labels) and / or "raw" (input swc file).
+        """
+
+        unified_path = os.path.join(self.dict_paths["7-swc_clumpiness_result"], "unified_clumpiness.csv")
+
+        return assign_unified_clumpiness(unified_filepath = unified_path,
+                                         simplified_dir = self.dict_paths["3-swc_simplified_labeled"],
+                                         raw_dir = self.dict_config["swc_path"],
+                                         output_dir = self.dict_paths["8-swc_clumpiness"],
+                                         trees = trees,
+                                         overwrite = self.dict_config["overwrite_info"],
+                                         n_jobs = self.dict_config["n_jobs"])
+
+
+
+    ########################################
+    ################ STEP 9 ################
+    ########################################
+    def step09_plot_creation(self,
+                             trees: tuple = ("simplified", "raw")) -> dict:
+        """
+        9th step, saving the interactive topology plot of each neuron (step 8 file) as a stand-alone html file -
+        node fill = clumpiness score, shape and colour = label. See `plot_neuron_topology` in `scripts/visualize.py`.
+        Output: `9-swc_clumpiness_plots/<simplified | raw>/<neuron_id>.html`, the same layout as step 8.
+        Not a per-neuron step - it runs on every neuron of the step 8 folder.
+        trees: tuple -> which trees to plot: "simplified" and / or "raw".
+        """
+
+        return plot_scored_neurons(scored_dir = self.dict_paths["8-swc_clumpiness"],
+                                   labels_dir = self.dict_paths["3-swc_simplified_labeled"],
+                                   output_dir = self.dict_paths["9-swc_clumpiness_plots"],
+                                   trees = trees,
+                                   overwrite = self.dict_config["overwrite_info"],
+                                   n_jobs = self.dict_config["n_jobs"])

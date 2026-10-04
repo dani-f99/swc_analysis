@@ -1,6 +1,6 @@
-# Fixed copy of `scripts/pipeline.py` - see `BUGFIX_REPORT_claude.md` for the full change log.
-from scripts.preprocessing_claude import simplify_swc_topology, swc2json, attach_node_labels
-from scripts.processing_claude import generate_internal_subtrees
+# Fixed version of the original `_archive/scripts/pipeline.py` - see `_archive/BUGFIX_REPORT.md` for the full change log.
+from scripts.preprocessing import simplify_swc_topology, swc2json, attach_node_labels
+from scripts.processing import generate_internal_subtrees
 from scripts.helpers import read_json
 
 
