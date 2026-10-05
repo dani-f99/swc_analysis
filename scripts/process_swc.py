@@ -273,29 +273,7 @@ class ProcessSWC():
         """
         6th step, calculating the clumpiness for each json file - the main tree and every sub-tree of step 5.
         Output: `6-clumpiness_scores/<neuron_id>/<json file name>.csv` (`<neuron_id>.csv` is the main tree).
-        The trees of the neuron are scored one after the other - `main.py` instead pools the trees of all neurons
-        (`step06_list_trees` + `step06_score_tree`), so one large neuron does not hold a single worker for the whole run.
         neuron_id: str | int -> neuron id number of the file in the `swc_input` folder.
-        """
-
-        # Clumpiness calculation - an existing csv is kept when overwrite is False
-        trees = self.step06_list_trees(neuron_id)
-        n_written = sum(int(self.step06_score_tree(json_path, output_dir) is True) for json_path, output_dir in trees)
-
-        if n_written == 0:
-            return {"skipped": True}
-
-        return {"n_trees": len(trees),
-                "n_clumpiness_written": n_written}
-
-
-    def step06_list_trees(self,
-                          neuron_id: str | int) -> list:
-        """
-        Step 6 preparation - lists the json trees of one neuron (main tree first, then its sub-trees), creates its output
-        folder and removes the scores of trees that no longer exist.
-        neuron_id: str | int -> neuron id number of the file in the `swc_input` folder.
-        Returns a list of (json path, output folder) - one per tree, to be scored by `step06_score_tree`.
         """
 
         neuron_id = str(neuron_id)
@@ -313,22 +291,19 @@ class ProcessSWC():
             if stale_file.stem not in tree_names:
                 stale_file.unlink()
 
-        return [(i, output_path) for i in paths2process]
+        # Clumpiness calculation - an existing csv is kept when overwrite is False
+        n_written = 0
+        for i in paths2process:
+            written = process_single_clumpiness(filepath = i,
+                                                output_dir = output_path,
+                                                overwrite = self.dict_config["overwrite_info"])
+            n_written += int(written is True)
 
+        if n_written == 0:
+            return {"skipped": True}
 
-    def step06_score_tree(self,
-                          json_path: str,
-                          output_dir: str):
-        """
-        Step 6 on a single tree - runs find-clumpiness on one json tree (an existing csv is kept when overwrite is False).
-        json_path: str -> json tree (main tree or sub-tree), from `step06_list_trees`.
-        output_dir: str -> the neuron's `6-clumpiness_scores` folder, from `step06_list_trees`.
-        Returns True if the csv was written, None if it was skipped. Raises on a find-clumpiness failure.
-        """
-
-        return process_single_clumpiness(filepath = json_path,
-                                         output_dir = output_dir,
-                                         overwrite = self.dict_config["overwrite_info"])
+        return {"n_trees": len(paths2process),
+                "n_clumpiness_written": n_written}
 
 
 

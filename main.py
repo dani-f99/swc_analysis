@@ -20,7 +20,6 @@ import shutil
 import sys
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # The scripts read `config.json` and create folders relative to the working directory -> always run from the repo folder
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,7 +29,6 @@ sys.path.insert(0, REPO_DIR)
 import pandas as pd
 import polars as pl
 from joblib import delayed
-from tqdm import tqdm
 
 from scripts.process_swc import ProcessSWC
 from scripts.helpers import run_parallel
@@ -115,54 +113,6 @@ def run_step(test: ProcessSWC,
     return round(time.time() - t0, 2), None, None
 
 
-def run_step06_pooled(test: ProcessSWC,
-                      neuron_ids: list,
-                      n_jobs: int) -> list:
-    """
-    Step 6 over many neurons, pooled at the tree level: the trees (main tree + sub-trees) of ALL neurons share one worker
-    pool, largest json first, so a neuron with thousands of sub-trees is spread over every worker instead of holding one.
-    Threads are enough - the work is done by the find-clumpiness subprocess. Same output files as `step06_clumpiness_calculation`.
-    Never raises - returns one (seconds | None, error | None, traceback | None) per neuron, in the order of `neuron_ids`.
-    seconds = summed find-clumpiness time of the neuron's trees (comparable to the sequential per-neuron time).
-    """
-    seconds = {neuron_id: 0.0 for neuron_id in neuron_ids}
-    failures = {}  # neuron_id -> (error, traceback) - the first failure only, the neuron's remaining trees are skipped
-
-    # Listing the trees of every neuron (fast - folder listing + stale csv removal)
-    tasks = []
-    for neuron_id in neuron_ids:
-        try:
-            tasks += [(neuron_id, json_path, output_dir) for json_path, output_dir in test.step06_list_trees(neuron_id)]
-        except Exception as err:
-            failures[neuron_id] = (f"{type(err).__name__}: {err}", traceback.format_exc())
-    tasks.sort(key=lambda task: os.path.getsize(task[1]), reverse=True)
-
-    def score_tree(neuron_id, json_path, output_dir):
-        if neuron_id in failures:
-            return neuron_id, 0.0
-        t0 = time.time()
-        try:
-            test.step06_score_tree(json_path, output_dir)
-        except Exception as err:
-            failures.setdefault(neuron_id, (f"{type(err).__name__}: {err}", traceback.format_exc()))
-        return neuron_id, time.time() - t0
-
-    # n_jobs follows joblib: -1 = every core, -2 = every core but one, ...
-    n_workers = n_jobs if n_jobs > 0 else max((os.cpu_count() or 1) + 1 + n_jobs, 1)
-    pool = ThreadPoolExecutor(max_workers=n_workers)
-    try:
-        futures = [pool.submit(score_tree, *task) for task in tasks]
-        for future in tqdm(as_completed(futures), total=len(futures), desc=STEP_LABELS["step06"].split(" - ")[0], unit=" trees"):
-            neuron_id, elapsed = future.result()
-            seconds[neuron_id] += elapsed
-    finally:
-        # Ctrl+C -> drop the queued trees instead of waiting for all of them
-        pool.shutdown(wait=True, cancel_futures=True)
-
-    return [(None, *failures[neuron_id]) if neuron_id in failures else (round(seconds[neuron_id], 2), None, None)
-            for neuron_id in neuron_ids]
-
-
 def run_check(test: ProcessSWC,
               neuron_id: str,
               last_step: int = 6) -> tuple:
@@ -236,12 +186,8 @@ def main():
     for step_name in list(STEP_METHODS)[:args.last_step - 1]:
         active = [neuron_id for neuron_id in selected if records[neuron_id]["status"] == "ok"]
         print(f"\n> {STEP_LABELS[step_name]} ({len(active)} neurons)", flush=True)
-        if step_name == "step06":
-            # Pooled over the trees of all neurons, not over neurons - see `run_step06_pooled`
-            results = run_step06_pooled(test, active, n_jobs)
-        else:
-            results = run_parallel((delayed(run_step)(test, step_name, neuron_id) for neuron_id in active),
-                                   total=len(active), n_jobs=n_jobs, desc=STEP_LABELS[step_name].split(" - ")[0], unit=" neurons")
+        results = run_parallel((delayed(run_step)(test, step_name, neuron_id) for neuron_id in active),
+                               total=len(active), n_jobs=n_jobs, desc=STEP_LABELS[step_name].split(" - ")[0], unit=" neurons")
         for neuron_id, (seconds, error, trace) in zip(active, results):
             if error is None:
                 records[neuron_id][f"{step_name}_sec"] = seconds
