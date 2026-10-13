@@ -6,13 +6,12 @@
 #   python run_test.py                      -> first 10 neurons, steps 1-9, overwrite and n_jobs from the config
 #   python run_test.py -n 0                 -> all neurons
 #   python run_test.py -n 50 --selection random --n-jobs 1 --overwrite true
-#   python run_test.py --last-step 5        -> stop before the clumpiness calculation
+#   python run_test.py --last-step 4        -> stop before the clumpiness calculation
 #   python run_test.py --neuron-ids 720575940596125868 720575940597856265
 #
 # Exit code: 0 -> every neuron and every run-level step (7-9) passed, 1 -> a neuron failed a step or a check, or a
 #            run-level step had failures, 2 -> nothing was run (setup problem).
 import argparse
-import glob
 import json
 import os
 import random
@@ -41,7 +40,7 @@ def check_neuron(test: ProcessSWC,
                  neuron_id: str,
                  last_step: int = 6) -> dict:
     """
-    Independent checks on the files written by steps 2-6 (does not use the pipeline functions).
+    Independent checks on the files written by steps 2-4 and 6 (does not use the pipeline functions).
     test: ProcessSWC -> initiated pipeline object (paths).
     neuron_id: str -> neuron id to check.
     last_step: int -> last step that was run, the step 6 check is skipped below 6.
@@ -79,25 +78,23 @@ def check_neuron(test: ProcessSWC,
     checks["ok_json_nodes"] = len(json_labels) == len(swc_lab)
     checks["ok_json_labels"] = json_labels == csv_labels
 
-    # Step 5 - one sub-tree per internal node, root excluded
-    n_internal = int(swc_lab["node_id"].isin(swc_lab["parent"]).sum())
-    n_subtrees = len(glob.glob(os.path.join(test.dict_paths["5_json_divided"], neuron_id, "*.json")))
-    checks["ok_subtrees"] = n_subtrees == n_internal - 1
-
-    # Step 6 - one clumpiness csv per json tree (main tree + every sub-tree)
+    # Step 6 - one score row per tree: the main tree (node_id 0) + the sub-tree of every internal node, root excluded
     if last_step >= 6:
-        n_csv = len(glob.glob(os.path.join(test.dict_paths["6-clumpiness_scores"], neuron_id, "*.csv")))
-        checks["ok_clumpiness"] = n_csv == n_subtrees + 1
+        internal = swc_lab[swc_lab["node_id"].isin(swc_lab["parent"]) & (swc_lab["parent"] != -1)]
+        expected_trees = {0} | {int(n) for n in internal["node_id"]}
+        scores = pd.read_csv(os.path.join(test.dict_paths["6-clumpiness_scores"], f"{neuron_id}.csv"))
+        checks["n_trees"] = len(scores)
+        checks["ok_clumpiness"] = bool(scores["node_id"].is_unique) and set(scores["node_id"]) == expected_trees
 
     return checks
 
 
 ######################
 ### Single steps   ###
+# Step 5 (sub-tree json files) is not part of the run - step 6 builds the sub-trees in memory
 STEP_METHODS = {"step02": "step02_simplify_swc",
                 "step03": "step03_label_joining",
                 "step04": "step04_json_creation",
-                "step05": "step05_internal_node_div",
                 "step06": "step06_clumpiness_calculation"}
 
 
@@ -134,7 +131,7 @@ def main():
     parser.add_argument("--neuron-ids", nargs="+", default=[], help="explicit neuron ids -> overrides -n / --selection")
     parser.add_argument("--overwrite", choices=["config", "true", "false"], default="config",
                         help="overwrite rule for steps 2+ only, the labels parquet is untouched (default: config `overwrite_info`)")
-    parser.add_argument("--last-step", type=int, choices=[2, 3, 4, 5, 6, 7, 8, 9], default=9, help="last step to run (default: 9)")
+    parser.add_argument("--last-step", type=int, choices=[2, 3, 4, 6, 7, 8, 9], default=9, help="last step to run (default: 9)")
     parser.add_argument("--n-jobs", type=int, default=None, help="neurons processed in parallel, 1 = sequential (default: config `n_jobs`)")
     parser.add_argument("--no-checks", action="store_true", help="skip the validation of the output files")
     parser.add_argument("--out-dir", default=None, help="folder for the html report + csv (default: the run's `0-run_log`)")
@@ -142,7 +139,7 @@ def main():
 
     # Step 6 needs the find-clumpiness program -> fail before the long part, not on the first neuron
     if args.last_step >= 6 and shutil.which("find-clumpiness") is None:
-        print("> `find-clumpiness` was not found on PATH - install it, or run with `--last-step 5`.")
+        print("> `find-clumpiness` was not found on PATH - install it, or run with `--last-step 4`.")
         return 2
 
     test = ProcessSWC(config_file=args.config)
@@ -168,10 +165,10 @@ def main():
         print("> No neurons to test - no SWC file with labels was found.")
         return 2
 
-    # The checks read the outputs of steps 2-5
-    run_checks = (not args.no_checks) and args.last_step >= 5
+    # The checks read the outputs of steps 2-4
+    run_checks = (not args.no_checks) and args.last_step >= 4
     if (not args.no_checks) and (not run_checks):
-        print("> Checks need steps 2-5 - skipped for this run.")
+        print("> Checks need steps 2-4 - skipped for this run.")
 
     n_jobs = args.n_jobs if args.n_jobs is not None else test.dict_config["n_jobs"]
     print(f"> {len(candidates)} neurons with labels, testing {len(selected)} "
@@ -183,7 +180,7 @@ def main():
 
     # Steps 2-6 - one step at a time over all neurons, so every step announces itself and has its own progress bar.
     # A neuron that failed a step is left out of the next steps.
-    for step_name in list(STEP_METHODS)[:args.last_step - 1]:
+    for step_name in [step for step in STEP_METHODS if int(step[4:]) <= args.last_step]:
         active = [neuron_id for neuron_id in selected if records[neuron_id]["status"] == "ok"]
         print(f"\n> {STEP_LABELS[step_name]} ({len(active)} neurons)", flush=True)
         results = run_parallel((delayed(run_step)(test, step_name, neuron_id) for neuron_id in active),

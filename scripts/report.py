@@ -17,7 +17,7 @@ STEP_LABELS = {"step01": "Step 1 - labels file",
                "step02": "Step 2 - simplify SWC",
                "step03": "Step 3 - join labels",
                "step04": "Step 4 - create JSON",
-               "step05": "Step 5 - divide sub-trees",
+               "step05": "Step 5 - sub-tree JSON files (optional)",
                "step06": "Step 6 - clumpiness scores",
                "step07": "Step 7 - unified clumpiness file",
                "step08": "Step 8 - scores on the SWC nodes",
@@ -28,10 +28,10 @@ CHECK_LABELS = {"ok_single_root":  ("Single root",  "Step 2 - simplified tree ha
                 "ok_labels":       ("Labels match", "Step 3 - every node carries exactly its own labels"),
                 "ok_json_nodes":   ("JSON nodes",   "Step 4 - every csv node is in the json tree"),
                 "ok_json_labels":  ("JSON labels",  "Step 4 - json labels equal the step 3 csv labels"),
-                "ok_subtrees":     ("Sub-trees",    "Step 5 - one sub-tree per internal node, root excluded"),
-                "ok_clumpiness":   ("Clumpiness",   "Step 6 - one clumpiness csv per json tree (main tree + every sub-tree)")}
+                "ok_clumpiness":   ("Clumpiness",   "Step 6 - one score row per tree (main tree + the sub-tree of every internal node)")}
 
 COLUMN_LABELS = {"n_nodes_simplified":     "Nodes (simplified)",
+                 "n_trees":                "Trees scored",
                  "labeled_nodes_raw":      "Labeled raw",
                  "labeled_nodes_expected": "Labeled expected",
                  "labeled_nodes_found":    "Labeled found",

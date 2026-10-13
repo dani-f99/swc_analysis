@@ -8,7 +8,7 @@
 # PROJECT: SWC Neuron Morphological Analysis
 
 ## 1. OVERVIEW
-This program is a Python pipeline that computes clumpiness scores of synapse labels (`pre` / `post`) on neuron SWC trees. Each neuron is simplified, labelled, converted to a JSON tree and split into one sub-tree per internal node. The clumpiness of the main tree and of every sub-tree is calculated with the `find-clumpiness` program. The scores are then joined into one unified table, assigned back to the root and the internal nodes of each neuron's SWC file, and drawn as an interactive topology plot per neuron.
+This program is a Python pipeline that computes clumpiness scores of synapse labels (`pre` / `post`) on neuron SWC trees. Each neuron is simplified, labelled and converted to a JSON tree. The clumpiness of the main tree and of the sub-tree of every internal node is calculated with the `find-clumpiness` program. The scores are then joined into one unified table, assigned back to the root and the internal nodes of each neuron's SWC file, and drawn as an interactive topology plot per neuron.
 
 The pipeline runs neuron by neuron (in parallel with joblib), checks the output of every step and writes an html report of the run.
 
@@ -45,7 +45,7 @@ Paths are written as comma separated folder names (e.g. `"data,input_swc,sk_lod1
 
 
 ## 4. PIPELINE STEPS
-The steps are methods of the `ProcessSWC` class (`scripts/process_swc.py`). Steps 2-6 run per neuron; steps 1 and 7-9 run once for the whole run.
+The steps are methods of the `ProcessSWC` class (`scripts/process_swc.py`). Steps 2-6 run per neuron; steps 1 and 7-9 run once for the whole run. Step 5 is optional and not part of the run.
 
 | Step | What it does | Output (under `output/<run_name>/`) |
 |---|---|---|
@@ -54,8 +54,8 @@ The steps are methods of the `ProcessSWC` class (`scripts/process_swc.py`). Step
 | 2 | Simplifies the SWC tree. Labelled nodes are always kept. | `2-swc_simplified/<neuron_id>.csv` |
 | 3 | Adds the labels to the simplified tree (`type` column). | `3-swc_simplified_labeled/<neuron_id>.csv` |
 | 4 | Converts the labelled tree to the JSON format of find-clumpiness. | `4-json/<neuron_id>.json` |
-| 5 | Writes one sub-tree JSON per internal node (root excluded). | `5_json_divided/<neuron_id>/<neuron_id>_<node_id>.json` |
-| 6 | Runs find-clumpiness on the main tree and on every sub-tree. | `6-clumpiness_scores/<neuron_id>/<neuron_id>.csv` (main tree) and `<neuron_id>_<node_id>.csv` |
+| 5 | Optional (`step05_internal_node_div`, not run by `main.py`): writes one sub-tree JSON per internal node (root excluded), to inspect the sub-trees. | `5_json_divided/<neuron_id>/<neuron_id>_<node_id>.json` |
+| 6 | Runs find-clumpiness on the main tree and on the sub-tree of every internal node. The sub-trees are built in memory; a tree without labels below its root gets empty scores without a find-clumpiness run. | `6-clumpiness_scores/<neuron_id>.csv` - one row per tree, `node_id` `0` = main tree |
 | 7 | Joins all scores into one unified table. Always rebuilt. | `7-swc_clumpiness_result/unified_clumpiness.csv` |
 | 8 | Assigns the scores to the root and the internal nodes of each neuron's SWC file, for the simplified and for the raw tree. | `8-swc_clumpiness/<simplified or raw>/<neuron_id>.csv` |
 | 9 | Saves the interactive topology plot of each neuron. | `9-swc_clumpiness_plots/<simplified or raw>/<neuron_id>.html` |
@@ -70,7 +70,7 @@ The steps are methods of the `ProcessSWC` class (`scripts/process_swc.py`). Step
 python main.py                   # first 10 neurons, steps 1-9
 python main.py  -n 0             # all neurons
 python main.py  -n 50 --selection random --n-jobs 4 --overwrite true
-python main.py  --last-step 5    # stop before the clumpiness calculation
+python main.py  --last-step 4    # stop before the clumpiness calculation
 python maint.py --neuron-ids 720575940596125868 720575940597856265
 python main.py  --help           # all options
 ```
@@ -110,7 +110,7 @@ One html file per neuron and tree. The fill colour of a node is its clumpiness s
 
 ### Run report (`0-run_log`)
 `test_report_<date>_<time>.html` and a `.csv` with the same results. The report shows:
-- the result of every tested neuron and of the validation checks of steps 2-6,
+- the result of every tested neuron and of the validation checks of steps 2-4 and 6,
 - the run-level steps 7-9 with their statistics and links to their outputs,
 - the runtime of every step per neuron,
 - a link to the plots of every neuron,
