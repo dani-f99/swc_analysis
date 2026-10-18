@@ -1,4 +1,3 @@
-# HTML report for the notebook test run - turns `df_test` / `tracebacks` (last cell of `dev_notebook.ipynb`)
 # into one self-contained html file (no external assets) in the run's report folder.
 import os
 import html

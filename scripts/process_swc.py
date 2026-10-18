@@ -1,4 +1,3 @@
-# Fixed copy of the `ProcessSWC` class from `notebook_test.ipynb` - see `_archive/BUGFIX_REPORT.md` for the full change log.
 # Import - Custom scripts
 from scripts.helpers import read_json
 from scripts.visualize import plot_scored_neurons

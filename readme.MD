@@ -5,11 +5,12 @@
                                         2026
 --------------------------------------------------------------------------------
 
-# PROJECT: SWC Neuron Morphological Analysis
+#SWC Neuron Analysis
 
 ## 1. OVERVIEW
-This program is a Python pipeline that computes clumpiness scores of synapse labels (`pre` / `post`) on neuron SWC trees. Each neuron is simplified, labelled and converted to a JSON tree. The clumpiness of the main tree and of the sub-tree of every internal node is calculated with the `find-clumpiness` program. The scores are then joined into one unified table, assigned back to the root and the internal nodes of each neuron's SWC file, and drawn as an interactive topology plot per neuron.
-
+This program is a Python pipeline that computes clumpiness scores of synapse labels (`pre` / `post`) on neuron SWC trees. 
+Each neuron is simplified, labelled and converted to a JSON tree. The clumpiness of the main tree and of the sub-tree of every internal node is calculated with the `find-clumpiness` program. 
+The scores are then joined into one unified table, assigned back to the root and the internal nodes of each neuron's SWC file, and drawn as an interactive topology plot per neuron.
 The pipeline runs neuron by neuron (in parallel with joblib), checks the output of every step and writes an html report of the run.
 
 ## 2. PREREQUISITES
@@ -22,10 +23,11 @@ The pipeline runs neuron by neuron (in parallel with joblib), checks the output 
 - joblib
 - tqdm
 - plotly
-- nbformat (optional - shows the plots inside the notebook; without it they open in the browser)
+- nbformat (optional - shows the plots inside the notebook, without it they open in the browser)
 
 ### Required Program:
-- [find-clumpiness](https://github.com/GregorySchwartz/find-clumpiness) - has to be on the `PATH` (try `find-clumpiness --help`). It is needed for step 6 only; all other steps run without it.
+- [find-clumpiness](https://github.com/GregorySchwartz/find-clumpiness) - has to be on the `PATH` (try `find-clumpiness --help`).
+  `find-clumpiness` is needed for step 6 only, all the other steps can run without it.
 
 
 ## 3. CONFIGURATION (config.json)
@@ -45,7 +47,9 @@ Paths are written as comma separated folder names (e.g. `"data,input_swc,sk_lod1
 
 
 ## 4. PIPELINE STEPS
-The steps are methods of the `ProcessSWC` class (`scripts/process_swc.py`). Steps 2-6 run per neuron; steps 1 and 7-9 run once for the whole run. Step 5 is optional and not part of the run.
+The steps are methods of the `ProcessSWC` class (`scripts/process_swc.py`). 
+Steps 2-6 run per neuron; steps 1 and 7-9 run once for the whole run. 
+Step 5 is optional and not part of the run.
 
 | Step | What it does | Output (under `output/<run_name>/`) |
 |---|---|---|
@@ -71,7 +75,7 @@ python main.py                   # first 10 neurons, steps 1-9
 python main.py  -n 0             # all neurons
 python main.py  -n 50 --selection random --n-jobs 4 --overwrite true
 python main.py  --last-step 4    # stop before the clumpiness calculation
-python maint.py --neuron-ids 720575940596125868 720575940597856265
+python main.py  --neuron-ids 720575940596125868 720575940597856265
 python main.py  --help           # all options
 ```
 
@@ -89,6 +93,19 @@ from scripts.visualize import plot_neuron_topology
 plot_neuron_topology("output/<run_name>/8-swc_clumpiness/simplified/<neuron_id>.csv")
 ```
 Zoom and pan with the mouse, hover a node for its id, label and scores, and switch the score column in the menu of the figure. `save_html="plot.html", show=False` writes the plot to a file instead of showing it.
+
+### Reviewing the results (viewer)
+A small local website to browse the results of the runs in `output/`. It only reads the files, nothing is changed.
+
+```
+python viewer.py                  # opens http://127.0.0.1:8000 in the browser
+python viewer.py --port 8080 --no-browser
+```
+
+- **Run overview** - status of every neuron (from the run reports), files per step and the main tree scores.
+- **Neuron page** - checks, statistics, the step 9 tree plot (simplified / raw), the clumpiness scores and every file of the neuron (view as a table or text, open or download).
+
+On a server: run `python viewer.py --no-browser` there, connect with `ssh -L 8000:localhost:8000 <server>` and open http://localhost:8000. Stop the viewer with Ctrl+C.
 
 
 ## 6. OUTPUT
@@ -121,16 +138,18 @@ One html file per neuron and tree. The fill colour of a node is its clumpiness s
 
 ```
 config.json            configuration of the run
-run_test.py            runs the pipeline from the command line
+main.py                runs the pipeline from the command line
 dev_notebook.ipynb     the pipeline class and a test run, step by step
+viewer.py              local website to review the results (see section 5)
 scripts/
     process_swc.py     ProcessSWC class - one method per step
     preprocessing.py   functions of steps 1-4 (labels, simplification, JSON)
     processing.py      functions of steps 5-8 (sub-trees, clumpiness, unified table, score assignment)
     visualize.py       topology plot (step 9)
     report.py          html report of a run
+    viewer.html        page of the results viewer
     helpers.py         small helper functions
-    pipeline.py        single-function version of steps 2-5 (not used by run_test.py)
+    pipeline.py        single-function version of steps 2-5 (not used by main.py)
 data/
     input_swc/         raw SWC files
     input_labels/      label files

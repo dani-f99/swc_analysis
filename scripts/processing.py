@@ -1,5 +1,4 @@
 #########
-# Fixed version of the original `_archive/scripts/processing.py` - see `_archive/BUGFIX_REPORT.md` for the full change log.
 # Imports
 from scripts.helpers import chunked_iterable, run_parallel
 
@@ -39,12 +38,10 @@ def generate_internal_subtrees(input_json_path: str,
     """
 
     # Paths indiations
-    # [FIX 4b] `Path(output_dir, <int>)` raised TypeError - always use the string id.
     neuron_number = str(neuron_number)
     input_path = Path(input_json_path)
     out_dir = Path(output_dir, neuron_number)
 
-    # [FIX 4a] Old code called `.exists()` on a str (AttributeError whenever overwrite=False), and with
     # overwrite=True stale sub-trees from an older tree version stayed next to the new ones.
     existing = list(out_dir.glob("*.json")) if out_dir.exists() else []
     if existing and (overwrite is False):
@@ -169,7 +166,6 @@ def process_single_clumpiness(filepath: str,
         os.replace(temp_csv, output_csv)
         return True
 
-    # [FIX 6c] The reason of the failure (find-clumpiness stderr / missing executable) used to be discarded.
     except subprocess.CalledProcessError as err:
         if temp_csv.exists():
             temp_csv.unlink()
@@ -323,7 +319,6 @@ def process_clumpiness_csv(filepath_str: str):
     if os.path.getsize(filepath) <= 32:
         return None, None
 
-    # [FIX 6b] Parse errors used to be swallowed (`return None`), silently dropping files from the dataset.
     try:
         df = pd.read_csv(filepath)
         if df.empty:
