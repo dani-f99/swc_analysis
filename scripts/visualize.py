@@ -29,13 +29,17 @@ EXTRA_STYLES = [("#eda100", "cross"), ("#e87ba4", "x"), ("#008300", "star"), ("#
 ######################
 ### Helpers        ###
 def _read_tree(data: Union[str, pd.DataFrame]) -> tuple:
-    """Loads a tree from a DataFrame, a raw `.swc` file or a pipeline csv. Returns (DataFrame, name from the file path)."""
+    """
+    Loads a tree from a DataFrame, a raw `.swc` file or a pipeline csv. Returns (DataFrame, name from the file path).
+    """
+
     if isinstance(data, pd.DataFrame):
         return data.reset_index(drop=True).copy(), ""
 
     path = str(data)
     if path.endswith(".swc"):
         df = pd.read_csv(path, comment="#", header=None, sep=r"\s+", names=SWC_COLUMNS)
+   
     else:
         df = pd.read_csv(path)
         # csv files written with the pandas index (steps 2-3) start with an unnamed column
@@ -43,13 +47,18 @@ def _read_tree(data: Union[str, pd.DataFrame]) -> tuple:
 
     folder = os.path.basename(os.path.dirname(os.path.abspath(path)))
     name = os.path.splitext(os.path.basename(path))[0]
+    
     return df, f"{name} - {folder} tree" if folder in ("simplified", "raw") else name
 
 
 def _clean_label(value) -> Union[str, None]:
-    """"Pre, post" / "post,pre" -> "post,pre"; empty / nan -> None."""
+    """
+    "pre, post" / "post,pre" -> "post,pre"; empty / nan -> None.
+    """
+
     if pd.isna(value) or str(value).strip().lower() in ("", "nan", "none", "null"):
         return None
+    
     return ",".join(sorted(part.strip().lower() for part in str(value).split(",") if part.strip()))
 
 
@@ -59,11 +68,14 @@ def _tree_layout(node_ids: list, parents: list) -> dict:
     Every leaf gets one slot on the x axis, a parent sits above the middle of its leaves, y is the depth below the root.
     Returns a dict of lists aligned with `node_ids`: x, depth, n_leaves, n_children, is_leaf, is_root.
     """
+
     known = set(node_ids)
     children, roots = {}, []
     for node, parent in zip(node_ids, parents):
+
         if parent == -1 or parent not in known:
             roots.append(node)
+
         else:
             children.setdefault(parent, []).append(node)
 
@@ -71,20 +83,23 @@ def _tree_layout(node_ids: list, parents: list) -> dict:
     next_slot = 0
     for root in roots:
         order, stack = [], [(root, 0)]
+
         while stack:
             node, node_depth = stack.pop()
             depth[node] = node_depth
             order.append(node)
             stack.extend((child, node_depth + 1) for child in reversed(children.get(node, [])))
 
-        for node in order:               # pre-order -> the leaves take their slots from left to right
+        for node in order:            # pre-order -> the leaves take their slots from left to right
             if node not in children:
                 first[node] = last[node] = next_slot
                 next_slot += 1
+
         for node in reversed(order):     # children are always visited before their parent
             if node in children:
                 first[node] = min(first[child] for child in children[node])
                 last[node] = max(last[child] for child in children[node])
+        
         next_slot += 2                   # gap between disconnected trees
 
     if len(depth) != len(node_ids):
@@ -138,8 +153,10 @@ def plot_neuron_topology(data: Union[str, pd.DataFrame],
     df, name = _read_tree(data)
     if not {"node_id", "parent"}.issubset(df.columns):
         raise ValueError("> `data` needs the columns `node_id` and `parent`.")
+    
     if not df["node_id"].is_unique:
         raise ValueError("> `data` has duplicated node ids.")
+    
     if df.empty:
         raise ValueError("> `data` has no nodes.")
 
@@ -152,15 +169,19 @@ def plot_neuron_topology(data: Union[str, pd.DataFrame],
     if labels_df is not None and not labels_df.empty:
         label_map = dict(zip(labels_df.iloc[:, 0].astype(int), labels_df.iloc[:, 1]))
         labels = [_clean_label(label_map.get(n)) for n in node_ids]
+
     elif "type" in df.columns:
         labels = [_clean_label(v) for v in df["type"]]
+
     else:
         labels = [None] * len(df)
+
     labels = np.array(labels, dtype=object)
 
     score_cols = [c for c in df.columns if c not in SWC_COLUMNS + ["type"] and pd.api.types.is_numeric_dtype(df[c])]
     if score is not None and score not in score_cols:
         raise ValueError(f"> Score column `{score}` not found - available: {score_cols}.")
+    
     score = score or (score_cols[0] if score_cols else None)
 
     # Label styles - fixed for pre / post / both, extra labels take the next free style
@@ -174,12 +195,17 @@ def plot_neuron_topology(data: Union[str, pd.DataFrame],
     hover = []
     for i, node in enumerate(node_ids):
         lines = [f"<b>node {node}</b>" + (" · root" if is_root[i] else " · leaf" if is_leaf[i] else "")]
+
         if labels[i]:
             lines.append(f"label: {labels[i].replace(',', ' + ')}")
+
         lines.append(f"depth {layout['depth'][i]}" + ("" if is_leaf[i] else f" · {layout['n_leaves'][i]} leaves below"))
+
         if not is_leaf[i]:
             lines += [f"{c}: " + ("–" if pd.isna(df[c].iat[i]) else f"{df[c].iat[i]:.3f}") for c in score_cols]
+
         hover.append("<br>".join(lines))
+
     hover = np.array(hover, dtype=object)
 
     # ---------------------------------------------------------
@@ -199,8 +225,13 @@ def plot_neuron_topology(data: Union[str, pd.DataFrame],
         if parent in position:
             edge_x += [x[position[parent]], x[i], None]
             edge_y += [y[position[parent]], y[i], None]
-    traces.append((go.Scattergl(x=edge_x, y=edge_y, mode="lines", line=dict(color=EDGE, width=1),
-                                hoverinfo="skip", showlegend=False), None))
+
+    traces.append((go.Scattergl(x=edge_x, 
+                                y=edge_y, 
+                                mode="lines", 
+                                line=dict(color=EDGE, width=1),
+                                hoverinfo="skip", 
+                                showlegend=False), None))
 
     has_label = np.array([l is not None for l in labels])
     add_markers(is_leaf & ~has_label, "leaf, no label", dict(size=4, color=MUTED))
@@ -209,10 +240,12 @@ def plot_neuron_topology(data: Union[str, pd.DataFrame],
     # a point on the line - drawn as a dot of the edge colour, so thousands of them do not bury the scored nodes.
     chain = (np.array(layout["n_children"]) == 1) & ~has_label & ~is_root
     hollow = dict(size=5, symbol="circle-open", color=MUTED, line=dict(width=1))
+
     for c in score_cols:
         no_score = ~is_leaf & df[c].isna().to_numpy()
         add_markers(no_score & chain, "chain node", dict(size=2, color=EDGE), group=c, showlegend=False)
         add_markers(no_score & ~chain, "no score", hollow, group=c)
+
     if not score_cols:
         add_markers(~is_leaf & chain, "chain node", dict(size=2, color=EDGE), showlegend=False)
         add_markers(~is_leaf & ~chain, "internal node", hollow)
@@ -226,16 +259,22 @@ def plot_neuron_topology(data: Union[str, pd.DataFrame],
     for c in score_cols:
         values = df[c].to_numpy(dtype=float)
         scored = ~np.isnan(values)
+
         if not scored.any():
             continue
+
         low, high = score_range if score_range is not None else (float(values[scored].min()), float(values[scored].max()))
         if high <= low:
             high = low + 1.0
+
         add_markers(scored, f"{c} score", group=c, showlegend=False,
                     marker=dict(size=7, color=values[scored], colorscale=SCORE_SCALE, cmin=low, cmax=high,
                                 line=dict(width=0.5, color=INK_2), showscale=True,
-                                colorbar=dict(title=dict(text=f"{c} clumpiness", side="right"), thickness=12, len=0.7,
-                                              outlinewidth=0, tickfont=dict(color=INK_2))))
+                                colorbar=dict(title=dict(text=f"{c} clumpiness", side="right"),
+                                               thickness=12, 
+                                               len=0.7,
+                                               outlinewidth=0, 
+                                               tickfont=dict(color=INK_2))))
 
     # Labels of leaves -> filled marker
     for label, (color, symbol) in styles.items():
@@ -248,8 +287,13 @@ def plot_neuron_topology(data: Union[str, pd.DataFrame],
 
     # Hover layer - one transparent marker per node, on top of everything. The hover text is stored once per node
     # instead of once per trace, which keeps the saved html small.
-    traces.append((go.Scattergl(x=x, y=y, mode="markers", marker=dict(size=10, color="rgba(0,0,0,0)"),
-                                text=hover, hoverinfo="text", showlegend=False), None))
+    traces.append((go.Scattergl(x=x, 
+                                y=y, 
+                                mode="markers", 
+                                marker=dict(size=10, color="rgba(0,0,0,0)"),
+                                text=hover, 
+                                hoverinfo="text", 
+                                showlegend=False), None))
 
     # ---------------------------------------------------------
     # 4. Figure
@@ -262,6 +306,7 @@ def plot_neuron_topology(data: Union[str, pd.DataFrame],
     n_leaves = int(is_leaf.sum())
     subtitle = f"{len(df):,} nodes · {n_leaves:,} leaves · depth {int(max(layout['depth']))}"
     subtitle += " · fill = clumpiness score, shape and colour = label" if score_cols else " · shape and colour = label"
+    
     fig.update_layout(
         title=dict(text=f"<b>{title or ('Neuron ' + name if name else 'Neuron topology')}</b><br><sup>{subtitle}</sup>", x=0.01),
         paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
@@ -272,6 +317,7 @@ def plot_neuron_topology(data: Union[str, pd.DataFrame],
         hoverlabel=dict(bgcolor=SURFACE, bordercolor=EDGE, font=dict(color=INK, size=12)),
         legend=dict(orientation="h", yanchor="top", y=-0.01, x=0, font=dict(color=INK_2)),
     )
+
     for i in np.flatnonzero(is_root):
         fig.add_annotation(x=x[i], y=y[i], text="root", showarrow=False, yshift=14, font=dict(size=11, color=INK_2))
 
@@ -292,9 +338,11 @@ def plot_neuron_topology(data: Union[str, pd.DataFrame],
     if show:
         try:
             fig.show(config=config)
+
         except ValueError:
             # plotly needs the `nbformat` package to draw inside a notebook -> without it the figure opens in the browser
             fig.show(renderer="browser", config=config)
+
         return None
 
     return fig
@@ -309,13 +357,17 @@ def _plot_worker(neuron_id: str,
                  trees: tuple,
                  overwrite: bool,
                  include_plotlyjs: Union[bool, str]) -> tuple:
-    """joblib worker of `plot_scored_neurons` - never raises, returns (neuron_id, plots written, error | None)."""
+    """
+    joblib worker of `plot_scored_neurons` - never raises, returns (neuron_id, plots written, error | None).
+    """
+
     n_written = 0
     try:
         for tree in trees:
             source = os.path.join(scored_dir, tree, f"{neuron_id}.csv")
             target = os.path.join(output_dir, tree, f"{neuron_id}.html")
             if (not os.path.exists(source)) or (os.path.exists(target) and overwrite is False):
+                
                 continue
 
             # The raw tree file carries no labels -> taken from the labelled simplified file, joined by node id

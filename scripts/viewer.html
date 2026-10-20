@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SWC Results Viewer</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f1f0ec; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --border: rgba(11,11,11,0.10); --accent: #2a78d6; --accent-soft: rgba(42,120,214,0.10);
+  --good: #0ca30c; --warning: #c98500; --serious: #ec835a; --critical: #d03b3b;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #8f8e88;
+    --grid: #2c2c2a; --border: rgba(255,255,255,0.10); --accent: #3987e5; --accent-soft: rgba(57,135,229,0.16);
+    --warning: #fab219;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button, select, input { font: inherit; color: inherit; }
+button, select, input[type=search] {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px;
+}
+button { cursor: pointer; }
+button:hover:not(:disabled) { background: var(--surface-2); }
+button:disabled { opacity: .45; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 13px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* Layout */
+.top { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+       padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.brand { font-weight: 650; font-size: 15px; margin-right: auto; }
+.brand span { color: var(--muted); font-weight: 400; }
+.layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: calc(100% - 53px); }
+aside { border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column;
+        position: sticky; top: 53px; height: calc(100vh - 53px); }
+.side-tools { padding: 12px; display: grid; gap: 8px; border-bottom: 1px solid var(--border); }
+.side-tools input, .side-tools select { width: 100%; }
+#neuron-list { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1; }
+#neuron-list li a { display: flex; align-items: center; gap: 8px; padding: 6px 12px; color: var(--ink); text-decoration: none; }
+#neuron-list li a:hover { background: var(--surface-2); }
+#neuron-list li a.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+#neuron-list .meta { margin-left: auto; font-size: 12px; color: var(--muted); }
+main { padding: 20px 24px 48px; min-width: 0; }
+@media (max-width: 800px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  #neuron-list { max-height: 260px; }
+  main { padding: 16px; }
+}
+
+/* Pieces */
+h1 { font-size: 22px; line-height: 1.25; margin: 0 0 4px; word-break: break-all; }
+h2 { font-size: 15px; margin: 24px 0 8px; }
+.crumbs { font-size: 13px; margin-bottom: 10px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--muted); }
+.dot.passed { background: var(--good); } .dot.check_failed { background: var(--serious); }
+.dot.failed { background: var(--critical); } .dot.check_error { background: var(--warning); }
+.dot.not_tested { background: transparent; border: 1.5px solid var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 9px; border-radius: 999px;
+        border: 1px solid var(--border); background: var(--surface); white-space: nowrap; }
+.chip.ok { color: var(--good); } .chip.miss { color: var(--muted); border-style: dashed; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; margin-top: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.card .k { font-size: 12px; color: var(--ink-2); }
+.card .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.card .s { font-size: 12px; color: var(--muted); }
+.card.wide { grid-column: span 2; }
+.score-grid { display: grid; grid-template-columns: auto auto auto auto; gap: 2px 10px; margin-top: 4px; font-size: 13px; align-items: baseline; }
+.error-box { margin-top: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--critical);
+             color: var(--critical); background: color-mix(in srgb, var(--critical) 8%, transparent); white-space: pre-wrap; }
+.tabs { display: flex; gap: 4px; margin-top: 22px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.tabs a { padding: 7px 14px; color: var(--ink-2); border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+.tabs a.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.panel { margin-top: 16px; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.toolbar .grow { margin-left: auto; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; }
+.seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+iframe.plot { width: 100%; height: 760px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.empty { padding: 28px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 8px; }
+
+/* Tables */
+.table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); max-height: 70vh; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 5px 10px; border-bottom: 1px solid var(--grid); text-align: left; white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--surface-2); font-weight: 600; z-index: 1; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--accent); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--accent-soft); }
+td.blank { color: var(--muted); }
+pre.text { margin: 0; padding: 12px; font: 12px/1.45 var(--mono); max-height: 70vh; overflow: auto;
+           background: var(--surface); border: 1px solid var(--border); border-radius: 8px; white-space: pre; }
+.file-list td:first-child { width: 1%; }
+.file-list .actions { display: flex; gap: 10px; }
+details.subtrees summary { cursor: pointer; padding: 6px 0; }
+.subtree-grid { display: flex; flex-wrap: wrap; gap: 4px; max-height: 220px; overflow: auto; padding: 4px 0; }
+.subtree-grid button { padding: 2px 8px; font-size: 12px; font-family: var(--mono); }
+#viewer-target { scroll-margin-top: 70px; }
+.notice { padding: 40px 16px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">SWC results viewer <span id="out-dir"></span></div>
+  <label>Run <select id="run-select" aria-label="Run"></select></label>
+  <a id="report-link" target="_blank" rel="noopener" hidden>Latest run report ↗</a>
+  <button id="reload" title="Read the run folder again">Reload</button>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="side-tools">
+      <input id="search" type="search" placeholder="Search neuron id" aria-label="Search neuron id">
+      <select id="filter" aria-label="Filter neurons">
+        <option value="all">All neurons</option>
+        <option value="passed">Passed</option>
+        <option value="problem">Failed / check failed</option>
+        <option value="not_tested">Not in a report</option>
+        <option value="no_plot">Without a plot</option>
+      </select>
+      <div id="list-count" class="muted" style="font-size:12px"></div>
+    </div>
+    <ul id="neuron-list"></ul>
+  </aside>
+  <main id="main"><div class="notice">Loading…</div></main>
+</div>
+
+<script>
+"use strict";
+
+// ---------- state ----------
+const state = { runs: [], run: null, data: null, neuron: null, tab: "plot", tree: "simplified" };
+const VERDICT_TEXT = { passed: "Passed", check_failed: "Check failed", failed: "Step failed",
+                       check_error: "Check error", not_tested: "Not in a report" };
+const STEP_PILLS = [["step02", "2 simplify"], ["step03", "3 labels"], ["step04", "4 JSON"], ["step05", "5 sub-trees"],
+                    ["step06", "6 scores"], ["step08_simplified", "8 scored SWC"], ["step09_simplified", "9 plot"]];
+const CHECK_TEXT = { ok_single_root: "Single root", ok_unique_nodes: "Unique nodes", ok_labels: "Labels match",
+                     ok_json_nodes: "JSON nodes", ok_json_labels: "JSON labels", ok_clumpiness: "Clumpiness" };
+
+// ---------- helpers ----------
+const $ = (sel) => document.querySelector(sel);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtInt = (v) => (v === null || v === undefined) ? "–" : Number(v).toLocaleString();
+const fmtScore = (v) => (v === null || v === undefined || v === "") ? "" : Number(v).toFixed(4);
+const fmtSize = (b) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
+const isNum = (v) => v !== "" && v !== null && !isNaN(Number(v));
+const fileUrl = (root, path, download) =>
+  `/files/${root}/${root === "output" ? encodeURIComponent(state.run) + "/" : ""}${path.split("/").map(encodeURIComponent).join("/")}${download ? "?download=1" : ""}`;
+
+async function api(route, params = {}) {
+  const res = await fetch(`/api/${route}?${new URLSearchParams(params)}`);
+  const body = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) throw new Error(body.error || res.statusText);
+  return body;
+}
+
+function readHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  return { run: p.get("run"), neuron: p.get("neuron"), tab: p.get("tab") || "plot" };
+}
+function go(next) {
+  const cur = { run: state.run, neuron: state.neuron, tab: state.tab, ...next };
+  const p = new URLSearchParams();
+  if (cur.run) p.set("run", cur.run);
+  if (cur.neuron) { p.set("neuron", cur.neuron); p.set("tab", cur.tab || "plot"); }
+  location.hash = p.toString();
+}
+
+// ---------- boot / routing ----------
+async function boot() {
+  try {
+    const r = await api("runs");
+    state.runs = r.runs;
+    $("#out-dir").textContent = "· " + r.output_dir;
+    $("#run-select").innerHTML = r.runs.map((x) => `<option value="${esc(x.name)}">${esc(x.name)}</option>`).join("");
+    if (!r.runs.length) { $("#main").innerHTML = `<div class="notice">No runs found in <span class="mono">${esc(r.output_dir)}</span>.</div>`; return; }
+    if (!readHash().run) { history.replaceState(null, "", "#run=" + encodeURIComponent(r.default)); }
+    await route();
+  } catch (e) { showError(e); }
+}
+
+async function route() {
+  const h = readHash();
+  const run = h.run && state.runs.some((x) => x.name === h.run) ? h.run : state.runs[0].name;
+  try {
+    if (run !== state.run || !state.data) await loadRun(run);
+    state.neuron = h.neuron;
+    state.tab = h.tab;
+    renderList();
+    if (state.neuron) await renderNeuron(); else renderOverview();
+  } catch (e) { showError(e); }
+}
+
+async function loadRun(run) {
+  state.run = run;
+  $("#run-select").value = run;
+  $("#neuron-list").innerHTML = "";
+  $("#main").innerHTML = `<div class="notice">Reading run <b>${esc(run)}</b>…</div>`;
+  state.data = await api("run", { run });
+  const rep = state.data.reports[0];
+  const link = $("#report-link");
+  link.hidden = !rep;
+  if (rep) link.href = fileUrl("output", "0-run_log/" + rep);
+}
+
+function showError(e) {
+  $("#main").innerHTML = `<div class="error-box">${esc(e.message || e)}</div>`;
+}
+
+// ---------- sidebar ----------
+function filteredNeurons() {
+  const q = $("#search").value.trim();
+  const f = $("#filter").value;
+  return state.data.neurons.filter((n) => {
+    if (q && !n.id.includes(q)) return false;
+    if (f === "passed") return n.verdict === "passed";
+    if (f === "problem") return ["failed", "check_failed", "check_error"].includes(n.verdict);
+    if (f === "not_tested") return n.verdict === "not_tested";
+    if (f === "no_plot") return !n.files.includes("step09_simplified");
+    return true;
+  });
+}
+
+function renderList() {
+  const list = filteredNeurons();
+  $("#list-count").textContent = `${list.length.toLocaleString()} of ${state.data.neurons.length.toLocaleString()} neurons`;
+  $("#neuron-list").innerHTML = list.map((n) => {
+    const nodes = n.record && n.record.n_nodes_simplified;
+    return `<li><a href="#${esc(new URLSearchParams({ run: state.run, neuron: n.id, tab: state.tab || "plot" }))}"
+              class="${n.id === state.neuron ? "active" : ""}" title="${esc(VERDICT_TEXT[n.verdict])}">
+              <span class="dot ${n.verdict}"></span><span class="mono">${esc(n.id)}</span>
+              <span class="meta num">${nodes ? fmtInt(nodes) + " nodes" : ""}</span></a></li>`;
+  }).join("") || `<li class="muted" style="padding:10px 12px">No neuron matches.</li>`;
+  const active = $("#neuron-list a.active");
+  if (active) active.scrollIntoView({ block: "nearest" });
+}
+
+// ---------- run overview ----------
+function renderOverview() {
+  const d = state.data;
+  const n = d.neurons;
+  const by = (v) => n.filter((x) => x.verdict === v).length;
+  const problems = by("failed") + by("check_failed") + by("check_error");
+  const scored = n.filter((x) => x.main_scores).length;
+  const labels = d.label_columns;
+
+  const pills = STEP_PILLS.map(([k, t]) => `<span class="chip ${d.counts[k] ? "ok" : "miss"}">Step ${esc(t)}: ${fmtInt(d.counts[k] || 0)}</span>`).join("");
+  $("#main").innerHTML = `
+    <h1>Run: ${esc(d.run)}</h1>
+    <div class="muted">${fmtInt(n.length)} neurons with outputs · ${d.reports.length} run report(s)</div>
+    <div class="cards">
+      <div class="card"><div class="k">Neurons</div><div class="v">${fmtInt(n.length)}</div></div>
+      <div class="card"><div class="k">Passed</div><div class="v" style="color:var(--good)">${fmtInt(by("passed"))}</div><div class="s">latest report per neuron</div></div>
+      <div class="card"><div class="k">Failed</div><div class="v" style="color:${problems ? "var(--critical)" : "inherit"}">${fmtInt(problems)}</div><div class="s">step or check failed</div></div>
+      <div class="card"><div class="k">Not in a report</div><div class="v">${fmtInt(by("not_tested"))}</div></div>
+      <div class="card"><div class="k">In unified table</div><div class="v">${fmtInt(scored)}</div><div class="s">${d.has_unified ? "step 7" : "step 7 not run"}</div></div>
+      <div class="card"><div class="k">Plots</div><div class="v">${fmtInt(d.counts.step09_simplified)}</div><div class="s">step 9, simplified</div></div>
+    </div>
+    <h2>Files per step</h2>
+    <div class="chips" style="margin-top:0">${pills}</div>
+    ${d.has_unified ? `<div style="margin-top:10px;font-size:13px">Unified table:
+       <a href="${fileUrl("output", d.unified_path)}" target="_blank">open</a> ·
+       <a href="${fileUrl("output", d.unified_path, true)}">download</a></div>` : ""}
+    <h2>Neurons</h2>
+    <div class="toolbar"><span class="muted" style="font-size:12px">Main tree clumpiness from step 7. Click a column to sort, a row to open the neuron.</span></div>
+    <div class="table-wrap"><table id="overview-table"></table></div>`;
+
+  const cols = [
+    { key: "id", label: "Neuron", get: (x) => x.id },
+    { key: "verdict", label: "Status", get: (x) => VERDICT_TEXT[x.verdict] },
+    { key: "nodes", label: "Nodes", n: true, get: (x) => x.record && x.record.n_nodes_simplified },
+    { key: "trees", label: "Trees", n: true, get: (x) => x.record && x.record.n_trees },
+    { key: "scored", label: "Scored sub-trees", n: true, get: (x) => x.scored_subtrees },
+    ...labels.map((l) => ({ key: "s:" + l, label: l, n: true, score: true, get: (x) => x.main_scores && x.main_scores[l] })),
+  ];
+  let sort = { key: "id", desc: false };
+  const draw = () => {
+    const col = cols.find((c) => c.key === sort.key);
+    const rows = [...n].sort((a, b) => {
+      const va = col.get(a), vb = col.get(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      const r = typeof va === "number" ? va - vb : String(va).localeCompare(String(vb));
+      return sort.desc ? -r : r;
+    });
+    $("#overview-table").innerHTML =
+      `<thead><tr>${cols.map((c) => `<th class="sortable ${c.n ? "n" : ""}" data-key="${esc(c.key)}">${esc(c.label)}${sort.key === c.key ? (sort.desc ? " ▼" : " ▲") : ""}</th>`).join("")}</tr></thead>
+       <tbody>${rows.map((x) => `<tr class="click" data-id="${esc(x.id)}">${cols.map((c) => {
+         const v = c.get(x);
+         if (c.key === "id") return `<td class="mono">${esc(v)}</td>`;
+         if (c.key === "verdict") return `<td><span class="head-row" style="gap:6px"><span class="dot ${x.verdict}"></span>${esc(v)}</span></td>`;
+         return `<td class="n ${v == null ? "blank" : ""}">${v == null ? "–" : c.score ? fmtScore(v) : fmtInt(v)}</td>`;
+       }).join("")}</tr>`).join("")}</tbody>`;
+  };
+  $("#overview-table").addEventListener("click", (e) => {
+    const th = e.target.closest("th[data-key]");
+    if (th) { sort = { key: th.dataset.key, desc: sort.key === th.dataset.key ? !sort.desc : false }; draw(); return; }
+    const tr = e.target.closest("tr[data-id]");
+    if (tr) go({ neuron: tr.dataset.id, tab: "plot" });
+  });
+  draw();
+}
+
+// ---------- neuron page ----------
+async function renderNeuron() {
+  const id = state.neuron;
+  const n = state.data.neurons.find((x) => x.id === id);
+  if (!n) { $("#main").innerHTML = `<div class="error-box">Neuron ${esc(id)} has no outputs in run ${esc(state.run)}.</div>`; return; }
+  $("#main").innerHTML = `<div class="notice">Loading ${esc(id)}…</div>`;
+  const info = await api("neuron", { run: state.run, id });
+  if (state.neuron !== id) return;   // another neuron was opened meanwhile
+
+  const list = filteredNeurons();
+  const i = list.findIndex((x) => x.id === id);
+  const prev = i > 0 ? list[i - 1].id : null, next = i >= 0 && i < list.length - 1 ? list[i + 1].id : null;
+  const rec = n.record || {};
+  const s = info.stats;
+  const checks = Object.keys(CHECK_TEXT).filter((k) => rec[k] !== undefined && rec[k] !== null);
+  const labels = state.data.label_columns;
+
+  $("#main").innerHTML = `
+    <div class="crumbs">
+      <a href="#${esc(new URLSearchParams({ run: state.run }))}">← Run overview</a>
+      <span class="muted">·</span>
+      <button id="prev" ${prev ? "" : "disabled"} title="Previous neuron in the list (k)">‹ Prev</button>
+      <button id="next" ${next ? "" : "disabled"} title="Next neuron in the list (j)">Next ›</button>
+      <span class="muted">${i >= 0 ? `${i + 1} / ${list.length}` : ""}</span>
+    </div>
+    <div class="head-row">
+      <h1 class="mono" style="font-size:20px">${esc(id)}</h1>
+      <span class="chip"><span class="dot ${n.verdict}"></span>${esc(VERDICT_TEXT[n.verdict])}</span>
+      ${rec.report ? `<a href="${fileUrl("output", "0-run_log/" + rec.report)}" target="_blank" style="font-size:12px">report ↗</a>` : ""}
+    </div>
+    <div class="chips">${STEP_PILLS.map(([k, t]) => `<span class="chip ${n.files.includes(k) ? "ok" : "miss"}">${n.files.includes(k) ? "✓" : "–"} Step ${esc(t)}</span>`).join("")}</div>
+    ${checks.length ? `<div class="chips">${checks.map((k) => `<span class="chip" style="color:${rec[k] ? "var(--good)" : "var(--critical)"}">${rec[k] ? "✓" : "✕"} ${esc(CHECK_TEXT[k])}</span>`).join("")}</div>` : ""}
+    ${rec.error ? `<div class="error-box"><b>${esc(rec.failed_step || "checks")}</b>: ${esc(rec.error)}</div>` : ""}
+    <div class="cards">
+      <div class="card"><div class="k">Nodes raw</div><div class="v">${fmtInt(s.n_nodes_raw)}</div></div>
+      <div class="card"><div class="k">Nodes simplified</div><div class="v">${fmtInt(s.n_nodes_simplified)}</div>
+        <div class="s">${s.n_internal != null ? `${fmtInt(s.n_internal)} internal · ${fmtInt(s.n_leaves)} leaves` : ""}</div></div>
+      <div class="card"><div class="k">Labeled nodes</div><div class="v">${fmtInt(s.n_labeled)}</div>
+        <div class="s">${s.n_pre != null ? `${fmtInt(s.n_pre)} pre · ${fmtInt(s.n_post)} post` : ""}</div></div>
+      <div class="card"><div class="k">Trees scored</div><div class="v">${fmtInt(rec.n_trees)}</div>
+        <div class="s">${n.scored_subtrees != null ? `${fmtInt(n.scored_subtrees)} sub-trees with scores` : ""}</div></div>
+      ${labels.length ? `<div class="card wide"><div class="k">Main tree clumpiness</div><div class="score-grid">${labels.map((l) =>
+        `<span class="muted">${esc(l)}</span><b class="num">${n.main_scores && n.main_scores[l] != null ? fmtScore(n.main_scores[l]) : "–"}</b>`).join("")}</div></div>` : ""}
+    </div>
+    <nav class="tabs">
+      ${[["plot", "Tree plot"], ["scores", "Clumpiness scores"], ["files", "Files"]].map(([k, t]) =>
+        `<a href="#${esc(new URLSearchParams({ run: state.run, neuron: id, tab: k }))}" class="${state.tab === k ? "active" : ""}">${t}</a>`).join("")}
+    </nav>
+    <div class="panel" id="panel"></div>`;
+
+  $("#prev").onclick = () => prev && go({ neuron: prev });
+  $("#next").onclick = () => next && go({ neuron: next });
+
+  const panel = $("#panel");
+  if (state.tab === "scores") renderScores(panel, info);
+  else if (state.tab === "files") renderFiles(panel, info);
+  else renderPlot(panel, info);
+}
+
+function renderPlot(panel, info) {
+  const plots = Object.fromEntries(info.files.filter((f) => f.kind === "html").map((f) => [f.key.replace("step09_", ""), f]));
+  if (!plots.simplified && !plots.raw) {
+    panel.innerHTML = `<div class="empty">No topology plot for this neuron - step 9 has not been run on it.</div>`;
+    return;
+  }
+  if (!plots[state.tree]) state.tree = plots.simplified ? "simplified" : "raw";
+  const f = plots[state.tree];
+  panel.innerHTML = `
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Tree">
+        ${["simplified", "raw"].map((t) => `<button data-tree="${t}" class="${state.tree === t ? "on" : ""}" ${plots[t] ? "" : "disabled"}>${t[0].toUpperCase() + t.slice(1)} tree</button>`).join("")}
+      </div>
+      <span class="muted" style="font-size:12px">Fill = clumpiness score · triangle = pre · square = post · diamond = both. Choose the score in the menu of the plot.</span>
+      <a class="grow" href="${fileUrl("output", f.path)}" target="_blank">Open in new tab ↗</a>
+    </div>
+    <iframe class="plot" title="Topology plot" src="${fileUrl("output", f.path)}"></iframe>`;
+  panel.querySelectorAll("[data-tree]").forEach((b) => b.onclick = () => { state.tree = b.dataset.tree; renderPlot(panel, info); });
+}
+
+function renderScores(panel, info) {
+  const f = info.files.find((x) => x.key === "step06");
+  if (!f) { panel.innerHTML = `<div class="empty">No clumpiness scores - step 6 has not been run on this neuron.</div>`; return; }
+  panel.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:8px">One row per tree - node 0 is the main tree, every other node is the root of a sub-tree.
+    <a href="${fileUrl(f.root, f.path, true)}">Download csv</a></div><div id="scores-table"></div>`;
+  tableView($("#scores-table"), f, { scored: true });
+}
+
+function renderFiles(panel, info) {
+  panel.innerHTML = `
+    <div class="table-wrap" style="max-height:none"><table class="file-list">
+      <thead><tr><th>Step</th><th>File</th><th class="n">Size</th><th>Actions</th></tr></thead>
+      <tbody>${info.files.map((f, i) => `<tr>
+        <td>${esc(f.label)}</td><td class="mono">${esc(f.path.split("/").pop())}</td><td class="n">${fmtSize(f.size)}</td>
+        <td><span class="actions">
+          ${f.kind !== "html" ? `<a href="#" data-view="${i}">View</a>` : ""}
+          <a href="${fileUrl(f.root, f.path)}" target="_blank">Open ↗</a>
+          <a href="${fileUrl(f.root, f.path, true)}">Download</a></span></td></tr>`).join("")}
+      </tbody></table></div>
+    ${info.subtrees.length ? `<details class="subtrees" style="margin-top:12px"><summary>Step 5 - sub-tree JSON files (${fmtInt(info.subtrees.length)})</summary>
+      <div class="subtree-grid">${info.subtrees.map((s) => `<button data-sub="${esc(s)}">${esc(s.replace(/\.json$/, "").split("_").pop())}</button>`).join("")}</div></details>` : ""}
+    <div id="viewer-target"></div>`;
+
+  const target = $("#viewer-target");
+  const open = (f) => {
+    target.innerHTML = `<h2>${esc(f.label)} <span class="muted mono" style="font-weight:400">${esc(f.path)}</span></h2><div></div>`;
+    const box = target.lastElementChild;
+    if (f.kind === "table") tableView(box, f, {}); else textView(box, f);
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  panel.querySelectorAll("[data-view]").forEach((a) => a.onclick = (e) => { e.preventDefault(); open(info.files[+a.dataset.view]); });
+  panel.querySelectorAll("[data-sub]").forEach((b) => b.onclick = () =>
+    open({ label: "Step 5 - sub-tree", root: "output", path: `${info.subtrees_dir}/${b.dataset.sub}`, kind: "text" }));
+}
+
+// ---------- file views ----------
+function tableView(box, file, opts) {
+  const st = { offset: 0, limit: 100, sort: "", desc: false, q: "", scored: !!opts.scored };
+  box.innerHTML = `
+    <div class="toolbar">
+      <input type="search" placeholder="Filter rows" aria-label="Filter rows">
+      <label class="score-only" hidden><input type="checkbox"> Rows with scores only</label>
+      <span class="grow muted num info" style="font-size:12px"></span>
+      <button class="pg-prev">‹</button><button class="pg-next">›</button>
+    </div>
+    <div class="table-wrap"><table></table></div>`;
+  const [search, scoreBox] = [box.querySelector("input[type=search]"), box.querySelector(".score-only input")];
+  scoreBox.checked = st.scored;
+  let timer;
+  search.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { st.q = search.value.trim(); st.offset = 0; load(); }, 250); };
+  scoreBox.onchange = () => { st.scored = scoreBox.checked; st.offset = 0; load(); };
+  box.querySelector(".pg-prev").onclick = () => { st.offset = Math.max(0, st.offset - st.limit); load(); };
+  box.querySelector(".pg-next").onclick = () => { st.offset += st.limit; load(); };
+  box.querySelector("table").addEventListener("click", (e) => {
+    const th = e.target.closest("th[data-col]");
+    if (!th) return;
+    st.desc = st.sort === th.dataset.col ? !st.desc : false;
+    st.sort = th.dataset.col; st.offset = 0; load();
+  });
+
+  async function load() {
+    let r;
+    try {
+      r = await api("table", { root: file.root, run: state.run, path: file.path, offset: st.offset, limit: st.limit,
+                               sort: st.sort, desc: st.desc ? 1 : 0, q: st.q, scored: st.scored ? 1 : 0 });
+    } catch (e) { box.querySelector("table").innerHTML = `<tr><td class="blank">${esc(e.message)}</td></tr>`; return; }
+    const scoreCols = new Set(r.score_columns);
+    box.querySelector(".score-only").hidden = !r.score_columns.length;
+    const end = Math.min(r.offset + r.rows.length, r.total);
+    box.querySelector(".info").textContent = r.total ? `rows ${(r.offset + 1).toLocaleString()}–${end.toLocaleString()} of ${r.total.toLocaleString()}` : "no rows";
+    box.querySelector(".pg-prev").disabled = r.offset === 0;
+    box.querySelector(".pg-next").disabled = end >= r.total;
+    const numeric = r.columns.map((_, i) => r.rows.length > 0 && r.rows.every((row) => row[i] === "" || row[i] === undefined || isNum(row[i])));
+    box.querySelector("table").innerHTML =
+      `<thead><tr>${r.columns.map((c, i) => `<th class="sortable ${numeric[i] ? "n" : ""}" data-col="${esc(c)}">${esc(c)}${st.sort === c ? (st.desc ? " ▼" : " ▲") : ""}</th>`).join("")}</tr></thead>
+       <tbody>${r.rows.map((row) => `<tr>${r.columns.map((c, i) => {
+         const v = row[i] ?? "";
+         const shown = scoreCols.has(c) && isNum(v) ? fmtScore(v) : v;
+         return `<td class="${numeric[i] ? "n" : ""} ${v === "" ? "blank" : ""}">${v === "" ? "–" : esc(shown)}</td>`;
+       }).join("")}</tr>`).join("")}</tbody>`;
+  }
+  load();
+}
+
+async function textView(box, file) {
+  box.innerHTML = `<div class="muted">Loading…</div>`;
+  try {
+    const r = await api("text", { root: file.root, run: state.run, path: file.path });
+    box.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:6px">${fmtSize(r.size)}${r.pretty ? " · indented" : ""}${r.truncated ? " · cut after 2 MB - use Open / Download for the full file" : ""}</div>
+      <pre class="text"></pre>`;
+    box.querySelector("pre").textContent = r.text;
+  } catch (e) { box.innerHTML = `<div class="error-box">${esc(e.message)}</div>`; }
+}
+
+// ---------- events ----------
+window.addEventListener("hashchange", route);
+$("#run-select").onchange = (e) => go({ run: e.target.value, neuron: null });
+$("#reload").onclick = async () => { state.data = null; await route(); };
+$("#search").oninput = () => renderList();
+$("#filter").onchange = () => renderList();
+document.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, select, textarea") || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "j" && $("#next") && !$("#next").disabled) $("#next").click();
+  if (e.key === "k" && $("#prev") && !$("#prev").disabled) $("#prev").click();
+});
+boot();
+</script>
+</body>
+</html>

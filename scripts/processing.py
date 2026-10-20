@@ -1,5 +1,4 @@
 #########
-# Fixed version of the original `_archive/scripts/processing.py` - see `_archive/BUGFIX_REPORT.md` for the full change log.
 # Imports
 from scripts.helpers import chunked_iterable, run_parallel
 
@@ -15,6 +14,7 @@ import subprocess
 import uuid
 import json
 import csv
+import sys
 import os
 
 
@@ -38,12 +38,10 @@ def generate_internal_subtrees(input_json_path: str,
     """
 
     # Paths indiations
-    # [FIX 4b] `Path(output_dir, <int>)` raised TypeError - always use the string id.
     neuron_number = str(neuron_number)
     input_path = Path(input_json_path)
     out_dir = Path(output_dir, neuron_number)
 
-    # [FIX 4a] Old code called `.exists()` on a str (AttributeError whenever overwrite=False), and with
     # overwrite=True stale sub-trees from an older tree version stayed next to the new ones.
     existing = list(out_dir.glob("*.json")) if out_dir.exists() else []
     if existing and (overwrite is False):
@@ -168,7 +166,6 @@ def process_single_clumpiness(filepath: str,
         os.replace(temp_csv, output_csv)
         return True
 
-    # [FIX 6c] The reason of the failure (find-clumpiness stderr / missing executable) used to be discarded.
     except subprocess.CalledProcessError as err:
         if temp_csv.exists():
             temp_csv.unlink()
@@ -186,6 +183,127 @@ def process_single_clumpiness(filepath: str,
         raise Exception(f"> Failed to process clumpiness on `{filepath}`: {err}") from err
 
 
+######################################################
+######################################################
+def _load_json_tree(path: str):
+    """Loads a json tree - a deep tree exceeds Python's default recursion limit in `json.load`, so the limit is raised as needed."""
+    while True:
+        try:
+            with open(path, 'r') as f:
+                return json.load(f)
+        except RecursionError:
+            if sys.getrecursionlimit() >= 1_000_000:
+                raise
+            sys.setrecursionlimit(sys.getrecursionlimit() * 4)
+
+
+def run_find_clumpiness(tree_json: str) -> dict:
+    """
+    Runs find-clumpiness on one tree passed through stdin - no file is written for the tree.
+
+    tree_json: str -> the tree in the JSON format of find-clumpiness.
+    Returns {"<label1>_<label2>": value} - empty when find-clumpiness found no label combination in the tree.
+    """
+    try:
+        result = subprocess.run(["find-clumpiness", "-e", "AllExclusive", "-f", "JSON"],
+                                input=tree_json,
+                                capture_output=True,
+                                text=True,
+                                check=True)
+
+    except subprocess.CalledProcessError as err:
+        raise Exception(f"> find-clumpiness failed: {(err.stderr or '').strip()}") from err
+
+    except FileNotFoundError as err:
+        raise Exception(f"> Failed to run find-clumpiness - is `find-clumpiness` on PATH? ({err})") from err
+
+    scores = {}
+    for line in csv.reader(result.stdout.splitlines()[1:]):   # [0] is the header -> property1,property2,value
+        if line:
+            label1, label2, value = line
+            scores[f"{label1}_{label2}"] = float(value)
+
+    return scores
+
+
+def score_neuron_trees(input_json_path: str,
+                       output_csv: str,
+                       overwrite: bool = False) -> dict | None:
+    """
+    Calculates the clumpiness of the main tree of a neuron and of the sub-tree of every internal node, and saves all of
+    them to ONE csv file - one row per tree: node_id (0 = main tree, otherwise the root node of the sub-tree) and one
+    `<label1>_<label2>` column per label combination, empty where the combination was not found in the tree.
+    The sub-trees are built in memory and passed to find-clumpiness through stdin, so no sub-tree file is written.
+    A tree without any label below its root is not sent to find-clumpiness - its scores are always empty.
+
+    input_json_path: str -> main JSON tree of the neuron (step 4).
+    output_csv: str -> path of the neuron's scores csv.
+    overwrite: bool -> if False and the csv already exists, nothing is done (returns None).
+    Returns a dict with the number of trees, of find-clumpiness runs and of trees without labels, or None if skipped.
+    """
+    output_csv = Path(output_csv)
+    if (overwrite is False) and output_csv.exists():
+        return None
+
+    tree = _load_json_tree(input_json_path)
+
+    # Post-order walk without recursion -> the JSON text of a node is built from the JSON text of its children,
+    # and a sub-tree is scored as soon as its text is complete.
+    # frame -> [node, index of the next child, JSON text of the finished children, number of labels below the node]
+    rows = []
+    n_runs = 0
+    stack = [[tree, 0, [], 0]]
+    while stack:
+        frame = stack[-1]
+        node_info, children = frame[0]
+
+        if frame[1] < len(children):
+            stack.append([children[frame[1]], 0, [], 0])
+            frame[1] += 1
+            continue
+
+        stack.pop()
+        is_main_root = not stack
+        node_json = "[" + json.dumps(node_info, separators=(',', ':')) + ",[" + ",".join(frame[2]) + "]]"
+
+        # A node is internal if the children array is not empty. The main tree is always scored.
+        if children or is_main_root:
+            scores = {}
+            if frame[3] > 0:
+                try:
+                    scores = run_find_clumpiness(node_json)
+                except Exception as err:
+                    raise Exception(f"{err} (`{input_json_path}`, node {node_info.get('nodeID')})") from err
+                n_runs += 1
+            rows.append((0 if is_main_root else int(node_info["nodeID"]), scores))
+
+        if stack:
+            stack[-1][2].append(node_json)
+            stack[-1][3] += frame[3] + len(node_info["nodeLabels"])
+
+    rows.sort(key=lambda row: row[0])
+    label_cols = sorted({label for _, scores in rows for label in scores})
+
+    # Written to a temp file first -> a failed run never leaves a partial scores file
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    temp_csv = output_csv.with_name(output_csv.name + ".tmp")
+    try:
+        with open(temp_csv, 'w', newline='') as f_out:
+            writer = csv.writer(f_out)
+            writer.writerow(["node_id"] + label_cols)
+            for node_id, scores in rows:
+                writer.writerow([node_id] + [scores.get(label, "") for label in label_cols])
+        os.replace(temp_csv, output_csv)
+    except Exception:
+        if temp_csv.exists():
+            temp_csv.unlink()
+        raise
+
+    return {"n_trees": len(rows),
+            "n_clumpiness_runs": n_runs,
+            "n_trees_no_labels": len(rows) - n_runs}
+
+
 ##############################################
 ##############################################
 def process_clumpiness_csv(filepath_str: str):
@@ -201,7 +319,6 @@ def process_clumpiness_csv(filepath_str: str):
     if os.path.getsize(filepath) <= 32:
         return None, None
 
-    # [FIX 6b] Parse errors used to be swallowed (`return None`), silently dropping files from the dataset.
     try:
         df = pd.read_csv(filepath)
         if df.empty:
@@ -284,47 +401,26 @@ def compile_unified_dataset(input_directory: str,
 
 ##############################################
 ##############################################
-def read_neuron_clumpiness(neuron_dir: str) -> tuple:
+def read_neuron_clumpiness(neuron_file: str) -> tuple:
     """
-    Reads every find-clumpiness csv of one neuron into wide rows - one row per tree, one value per label combination.
-    `<neuron_id>.csv` is the main tree (node_id 0), `<neuron_id>_<node_id>.csv` is the sub-tree of an internal node.
+    Reads the scores csv of one neuron (see `score_neuron_trees`) into wide rows - one row per tree, one value per
+    label combination. node_id 0 is the main tree, every other node_id is the sub-tree of an internal node.
 
-    neuron_dir: str -> path to the neuron's folder inside the clumpiness scores folder.
+    neuron_file: str -> path to the neuron's `<neuron_id>.csv` inside the clumpiness scores folder.
     Returns (list of row dicts, list of error messages).
     """
-    neuron_id = Path(neuron_dir).name
+    neuron_id = Path(neuron_file).stem
     rows, errors = [], []
 
-    with os.scandir(neuron_dir) as entries:
-        for entry in entries:
-            if not (entry.name.endswith(".csv") and entry.is_file()):
-                continue
-
-            try:
-                stem = entry.name[:-4]
-                if stem == neuron_id:
-                    node_id = 0
-                else:
-                    # rsplit -> only the last "_" separates the node id
-                    prefix, node = stem.rsplit("_", 1)
-                    if prefix != neuron_id:
-                        raise ValueError("file name does not belong to this neuron")
-                    node_id = int(node)
-
-                row = {"neuron_id": neuron_id, "node_id": node_id}
-                with open(entry.path, newline="") as f:
-                    reader = csv.reader(f)
-                    next(reader, None)   # header -> property1,property2,value
-                    for line in reader:
-                        if not line:
-                            continue
-                        label1, label2, value = line
-                        row[f"{label1}_{label2}"] = float(value)
-
+    try:
+        with open(neuron_file, newline="") as f:
+            for line in csv.DictReader(f):
+                row = {"neuron_id": neuron_id, "node_id": int(line.pop("node_id"))}
+                row.update({label: float(value) for label, value in line.items() if value != ""})
                 rows.append(row)
 
-            except Exception as err:
-                errors.append(f"{entry.path}: {err}")
+    except Exception as err:
+        return [], [f"{neuron_file}: {err}"]
 
     return rows, errors
 
@@ -335,19 +431,19 @@ def compile_wide_clumpiness(input_directory: str,
                             output_filepath: str,
                             n_jobs: int = 1) -> dict:
     """
-    Joins the find-clumpiness results of every neuron folder into a single wide file (csv or parquet, by extension):
+    Joins the find-clumpiness results of every neuron into a single wide file (csv or parquet, by extension):
     neuron_id, node_id (0 = root / main tree) and one `<label1>_<label2>` column per label combination,
     null where the combination was not found in the tree.
 
-    input_directory: str -> clumpiness scores folder, one sub-folder per neuron.
+    input_directory: str -> clumpiness scores folder, one `<neuron_id>.csv` per neuron.
     output_filepath: str -> path of the unified file, `.csv` or `.parquet`.
     n_jobs: int -> number of neurons read in parallel.
     Returns a dict with the number of neurons, rows, the label combination columns and the failed files.
     """
-    neuron_dirs = sorted(entry.path for entry in os.scandir(input_directory) if entry.is_dir())
+    neuron_files = sorted(entry.path for entry in os.scandir(input_directory) if entry.is_file() and entry.name.endswith(".csv"))
 
-    results = run_parallel((delayed(read_neuron_clumpiness)(d) for d in neuron_dirs),
-                           total=len(neuron_dirs), n_jobs=n_jobs, desc="Unifying clumpiness", unit=" neurons")
+    results = run_parallel((delayed(read_neuron_clumpiness)(f) for f in neuron_files),
+                           total=len(neuron_files), n_jobs=n_jobs, desc="Unifying clumpiness", unit=" neurons")
 
     frames, failed_files = [], []
     for rows, errors in results:

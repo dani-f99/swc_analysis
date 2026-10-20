@@ -1,5 +1,4 @@
 #################################
-# Fixed version of the original `_archive/scripts/preprocessing.py` - see `_archive/BUGFIX_REPORT.md` for the full change log.
 from tqdm import tqdm
 import pandas as pd
 import json
@@ -33,7 +32,6 @@ def get_neurons_info(parquet_path : str ,
     parquet_path = os.path.join(parquet_path, "swc_labels.parquet")
     parquet_exists = os.path.exists(parquet_path)
 
-    # [FIX 3a] The old branching called `os.remove` on a missing file when overwrite=True (first run crash).
     if parquet_exists and (overwrite_parquet is False):
         print("> Function execution halted, old `swc_labels.parquet` file preserved.")
         return None
@@ -45,7 +43,6 @@ def get_neurons_info(parquet_path : str ,
         print("> `swc_labels.parquet` havne't been found, creating a new file.")
 
     # 1. Generating a required neurons dataframe with their super-class type.
-    # [FIX 3d] The old `if swc_labels_filter:` tested the tuple itself (always True), so the [0] flag was ignored.
     swc_labels = None
     if swc_labels_filter and swc_labels_filter[0]:
         try:
@@ -72,7 +69,6 @@ def get_neurons_info(parquet_path : str ,
     for i in tqdm(folders, desc="Procssing metadata files", unit="files"):
         i_path = os.path.join(nodes_labels_path, i, nodes_labels_name)
 
-        # [FIX 3b] The write used to sit outside this check, so a folder without a connectors file
         # re-wrote the previous folder's `temp_labels` (duplicate rows / NameError on the first folder).
         if os.path.exists(i_path) is False:
             folders_skipped.append(i)
@@ -81,7 +77,6 @@ def get_neurons_info(parquet_path : str ,
         temp_labels = pd.read_pickle(i_path)
         temp_labels.neuron = temp_labels.neuron.astype("str")
 
-        # [FIX 3c] No more `except: pass` - a failed merge used to append the UNFILTERED labels.
         if swc_labels is not None:
             temp_labels = pd.merge(left=temp_labels,
                                    right=swc_labels,
@@ -136,7 +131,6 @@ def simplify_swc_topology(swc_input : pd.DataFrame,
         df = swc_input
 
     elif isinstance(swc_input, str):
-        # [FIX 6e] The old code only printed on failure and then crashed on an undefined `df`.
         try:
             df = pd.read_csv(swc_input)
         except Exception as err:
@@ -157,7 +151,6 @@ def simplify_swc_topology(swc_input : pd.DataFrame,
 
     # 2. Identify the core nodes we need to keep
     # Keep the node if it is the root (-1), a leaf (0 children), a branch (>1 children) or a forced node (e.g. labelled)
-    # [FIX 2] `keep_nodes` - synapse-labelled cable nodes used to be removed here, losing ~85% of the labels.
     always_keep = {int(n) for n in keep_nodes} if keep_nodes is not None else set()
     nodes_to_keep = set()
     for node, parent_id in parents.items():
@@ -251,7 +244,6 @@ def swc2json(swc_dataset,
     swc_df["node_id"] = swc_df["node_id"].astype(int)
     swc_df["parent"] = swc_df["parent"].astype(int)
 
-    # [FIX 5c] Duplicate node rows used to append the same child twice (duplicated sub-trees,
     # or a false "cycle" error). Fail loudly instead of relying on upstream `drop_duplicates`.
     duplicated_nodes = swc_df.loc[swc_df["node_id"].duplicated(), "node_id"].unique()
     if len(duplicated_nodes) > 0:
@@ -316,7 +308,6 @@ def swc2json(swc_dataset,
 
     root = roots[0]
 
-    # [FIX 5b] Deep trees exceeded Python's default recursion limit (1000) in both `build_node` and `json.dump`.
     # Compute the depth iteratively and raise the limit only as much as needed.
     depth = 0
     stack = [(root, 1)]

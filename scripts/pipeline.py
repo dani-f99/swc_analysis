@@ -1,4 +1,3 @@
-# Fixed version of the original `_archive/scripts/pipeline.py` - see `_archive/BUGFIX_REPORT.md` for the full change log.
 from scripts.preprocessing import simplify_swc_topology, swc2json, attach_node_labels
 from scripts.processing import generate_internal_subtrees
 from scripts.helpers import read_json
@@ -45,7 +44,6 @@ def process_neuron(neuron_itr: str,
 
         #######################
         #  3. simplify swc file
-        # [FIX 2] synapse-labelled nodes are never removed by the simplification
         simple_swc = simplify_swc_topology(swc_input=neuron_swc,
                                            swc_name=f"{neuron_itr}",
                                            output_path=swc_simp_path,
@@ -55,7 +53,6 @@ def process_neuron(neuron_itr: str,
 
         #########################################
         #  4. attach synapse labels + neuron type
-        # [FIX 1] node_id-aligned labels (was: merge + misaligned groupby assignment)
         swc_labeled = attach_node_labels(simple_swc, labels_parquet)
 
 
@@ -81,7 +78,6 @@ def process_neuron(neuron_itr: str,
 
         ##################################################################
         # 7. Devide main tree to multiple sub-trees for each internal node
-        # [FIX 7] swc2json writes `<id>.json`; the old code read `<id>_0.json`, which no longer exists.
         generate_internal_subtrees(input_json_path = os.path.join(json_path, f"{neuron_itr}.json"),
                                    neuron_number = neuron_itr,
                                    output_dir = json_path,

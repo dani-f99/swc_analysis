@@ -1,9 +1,8 @@
-# Fixed copy of the `ProcessSWC` class from `notebook_test.ipynb` - see `_archive/BUGFIX_REPORT.md` for the full change log.
 # Import - Custom scripts
 from scripts.helpers import read_json
 from scripts.visualize import plot_scored_neurons
 from scripts.preprocessing import get_neurons_info, simplify_swc_topology, swc2json, attach_node_labels
-from scripts.processing import generate_internal_subtrees, process_single_clumpiness, compile_wide_clumpiness, assign_unified_clumpiness
+from scripts.processing import generate_internal_subtrees, score_neuron_trees, compile_wide_clumpiness, assign_unified_clumpiness
 
 # Imports - python
 from pathlib import Path
@@ -37,8 +36,8 @@ class ProcessSWC():
     Step 2 - SWC file simplification. Removing internal nodes without external leaf.
     Step 3 - Adding labels to the simplified SWC file.
     Step 4 - Covnerting simplified SWC file + labels to JSON format for the clumpiness calculation.
-    Step 5 - Dividing each json to multiple sub-jsons (sub-trees) of each internal node.
-    Step 6 - Clumpiness calculation via the find-clumpiness program.
+    Step 5 - Optional, not part of the run: saving the sub-tree of each internal node as a JSON file (for inspection).
+    Step 6 - Clumpiness calculation via the find-clumpiness program - the main tree and the sub-tree of each internal node, one scores file per neuron.
     Step 7 - Joining the clumpiness results of all neurons into a single unified file (one row per node, one column per label combination).
     Step 8 - Assigning the clumpiness scores to the root and the internal nodes of each neuron's SWC file (simplified / raw - based on node id).
     Step 9 - Saving the interactive topology plot of each neuron as an html file (simplified / raw).
@@ -247,7 +246,7 @@ class ProcessSWC():
                                  neuron_id: str | int) -> dict:
         """
         5th step of the pipeline. Creating seperate JSON file for each sub-tree whithin the main tree.
-        This step is useful for the individual clumpiness scoring of each internal node.
+        Optional - step 6 builds the same sub-trees in memory, so this step is only needed to inspect the sub-tree files.
         Output: `5_json_divided/<neuron_id>/<neuron_id>_<node_id>.json`.
         neuron_id: str | int -> neuron id number of the file in the `swc_input` folder.
         """
@@ -271,39 +270,21 @@ class ProcessSWC():
     def step06_clumpiness_calculation(self,
                                        neuron_id: str | int) -> dict:
         """
-        6th step, calculating the clumpiness for each json file - the main tree and every sub-tree of step 5.
-        Output: `6-clumpiness_scores/<neuron_id>/<json file name>.csv` (`<neuron_id>.csv` is the main tree).
+        6th step, calculating the clumpiness of the main tree (step 4 json) and of the sub-tree of every internal node.
+        The sub-trees are built in memory, the files of step 5 are not needed.
+        Output: `6-clumpiness_scores/<neuron_id>.csv` - one row per tree: node_id (0 = main tree, otherwise the root
+        node of the sub-tree) + one column per label combination.
         neuron_id: str | int -> neuron id number of the file in the `swc_input` folder.
         """
 
         neuron_id = str(neuron_id)
 
-        # Required paths - main tree first, then its sub-trees
-        path_main = os.path.join(self.dict_paths["4-json"], f"{neuron_id}.json")
-        path_div = os.path.join(self.dict_paths["5_json_divided"], neuron_id)
-        paths2process = [path_main] + sorted(os.path.join(path_div, i) for i in os.listdir(path_div) if i.endswith(".json"))
-        output_path = os.path.join(self.dict_paths["6-clumpiness_scores"], neuron_id)
-        os.makedirs(output_path, exist_ok=True)
+        # Clumpiness calculation - an existing scores csv is kept when overwrite is False
+        stats = score_neuron_trees(input_json_path = os.path.join(self.dict_paths["4-json"], f"{neuron_id}.json"),
+                                   output_csv = os.path.join(self.dict_paths["6-clumpiness_scores"], f"{neuron_id}.csv"),
+                                   overwrite = self.dict_config["overwrite_info"])
 
-        # Scores of trees that no longer exist (older tree version) are removed, same as the sub-trees in step 5
-        tree_names = {Path(i).stem for i in paths2process}
-        for stale_file in Path(output_path).glob("*.csv"):
-            if stale_file.stem not in tree_names:
-                stale_file.unlink()
-
-        # Clumpiness calculation - an existing csv is kept when overwrite is False
-        n_written = 0
-        for i in paths2process:
-            written = process_single_clumpiness(filepath = i,
-                                                output_dir = output_path,
-                                                overwrite = self.dict_config["overwrite_info"])
-            n_written += int(written is True)
-
-        if n_written == 0:
-            return {"skipped": True}
-
-        return {"n_trees": len(paths2process),
-                "n_clumpiness_written": n_written}
+        return stats if stats is not None else {"skipped": True}
 
 
 
